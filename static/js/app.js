@@ -102,6 +102,8 @@ function renderFileList(confirmed = false) {
 // ─── 처리 ──────────────────────────────────────────
 document.getElementById('btnProcess').addEventListener('click', async () => {
   if (!selectedFiles.length) return;
+  const guideCard = document.querySelector('.guide-card');
+  if (guideCard) guideCard.style.display = 'none';
   showLoading(true);
 
   const formData = new FormData();

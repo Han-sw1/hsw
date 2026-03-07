@@ -281,7 +281,7 @@ body {
 }
 .guide-step {
   display: flex; flex-direction: row; align-items: center;
-  text-align: center; gap: 14px; flex: 1; padding: 0 8px;
+  gap: 14px; flex: 1; padding: 0 8px;
   justify-content: center;
 }
 .guide-num {
@@ -293,6 +293,7 @@ body {
 }
 .guide-text {
   font-size: 14px; color: var(--gray-dark); line-height: 1.9; margin: 0;
+  text-align: left;
 }
 .guide-text strong { color: var(--gray-dark); font-weight: 700; }
 .guide-divider {
