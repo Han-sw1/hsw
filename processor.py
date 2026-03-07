@@ -354,6 +354,8 @@ def process_all_files(file_paths, criteria_path, cits_path):
     final_tabs = {}
     for tab, dfs in all_tabs.items():
         combined = pd.concat(dfs, ignore_index=True)
+        # 모든 열 값이 동일한 완전 중복 행 제거
+        combined = combined.drop_duplicates().reset_index(drop=True)
         date_col = "날짜" if "날짜" in combined.columns else "장애접수일"
         if date_col in combined.columns:
             combined = combined.sort_values(date_col).reset_index(drop=True)
