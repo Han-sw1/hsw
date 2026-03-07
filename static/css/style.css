@@ -273,6 +273,33 @@ body {
 @keyframes spin { to { transform: rotate(360deg); } }
 .loading-box p { font-size: 13px; color: var(--gray); font-weight: 500; }
 
+/* ─── GUIDE CARD ─── */
+.guide-card {
+  background: var(--white); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 18px 28px;
+  display: flex; align-items: center; gap: 0; flex-wrap: wrap;
+}
+.guide-step {
+  display: flex; align-items: flex-start; gap: 12px;
+  flex: 1; min-width: 220px; padding: 6px 0;
+}
+.guide-num {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--primary); color: var(--white);
+  font-size: 13px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-top: 1px;
+}
+.guide-text {
+  font-size: 13px; color: var(--gray-dark); line-height: 1.7;
+}
+.guide-text strong { color: var(--gray-dark); }
+.guide-hint { font-size: 11px; color: var(--gray); }
+.guide-divider {
+  width: 1px; height: 44px; background: var(--border);
+  margin: 0 20px; flex-shrink: 0; align-self: center;
+}
+
 /* ─── TOAST ─── */
 .toast {
   position: fixed; bottom: 28px; left: 50%;
