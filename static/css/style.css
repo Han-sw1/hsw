@@ -46,8 +46,8 @@ body {
 
 .header-title {
   display: flex; align-items: center; gap: 10px;
-  font-family: 'Black Han Sans', sans-serif;
-  font-size: 22px; font-weight: 400;
+  font-family: 'Noto Sans KR', sans-serif;
+  font-size: 21px; font-weight: 800;
   color: var(--gray-dark);
   letter-spacing: 1px;
   position: absolute; left: 50%; transform: translateX(-50%);
