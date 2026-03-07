@@ -46,11 +46,12 @@ body {
 
 .header-title {
   display: flex; align-items: center; gap: 10px;
-  font-size: 22px; font-weight: 800;
+  font-family: 'Black Han Sans', sans-serif;
+  font-size: 22px; font-weight: 400;
   color: var(--gray-dark);
-  letter-spacing: 0.2px;
+  letter-spacing: 1px;
   position: absolute; left: 50%; transform: translateX(-50%);
-  white-space: nowrap;
+  white-space: nowrap; line-height: 1;
 }
 .title-icon-badge {
   display: inline-flex; align-items: center; justify-content: center;
