@@ -38,37 +38,11 @@ body {
 
 /* ─── LOGO ─── */
 .logo-area {
-  display: flex; align-items: center; gap: 0;
+  display: flex; align-items: center;
   text-decoration: none; flex-shrink: 0;
 }
-.logo-mark {
-  display: flex; align-items: baseline; line-height: 1;
-}
-.logo-a {
-  font-family: 'Arial Black', 'Arial', sans-serif;
-  font-size: 30px; font-weight: 900;
-  color: var(--primary);
-  letter-spacing: -1px;
-  line-height: 1;
-}
-.logo-tec {
-  font-family: 'Arial Black', 'Arial', sans-serif;
-  font-size: 30px; font-weight: 900;
-  color: var(--brand-gray);
-  letter-spacing: -0.5px;
-  line-height: 1;
-}
-.logo-divider {
-  width: 1px; height: 22px;
-  background: #D0D1D6;
-  margin: 0 12px;
-  align-self: center;
-}
-.logo-korean {
-  font-size: 14px; font-weight: 600;
-  color: var(--brand-gray);
-  letter-spacing: 0.3px;
-  line-height: 1;
+.logo-img {
+  height: 36px; width: auto;
 }
 
 .header-title {
