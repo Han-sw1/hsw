@@ -276,28 +276,28 @@ body {
 /* ─── GUIDE CARD ─── */
 .guide-card {
   background: var(--white); border-radius: var(--radius);
-  box-shadow: var(--shadow); padding: 18px 28px;
+  box-shadow: var(--shadow); padding: 22px 32px;
   display: flex; align-items: center; gap: 0; flex-wrap: wrap;
 }
 .guide-step {
-  display: flex; align-items: flex-start; gap: 12px;
-  flex: 1; min-width: 220px; padding: 6px 0;
+  display: flex; align-items: flex-start; gap: 16px;
+  flex: 1; min-width: 240px; padding: 8px 0;
 }
 .guide-num {
-  width: 26px; height: 26px; border-radius: 50%;
+  width: 30px; height: 30px; border-radius: 50%;
   background: var(--primary); color: var(--white);
-  font-size: 13px; font-weight: 800;
+  font-size: 14px; font-weight: 800;
   display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0; margin-top: 1px;
+  flex-shrink: 0; margin-top: 2px;
 }
 .guide-text {
-  font-size: 13px; color: var(--gray-dark); line-height: 1.7;
+  font-size: 14px; color: var(--gray-dark); line-height: 1.8;
 }
-.guide-text strong { color: var(--gray-dark); }
-.guide-hint { font-size: 11px; color: var(--gray); }
+.guide-text strong { color: var(--gray-dark); font-weight: 700; }
+.guide-hint { font-size: 12px; color: var(--gray); margin-top: 5px; line-height: 1.6; }
 .guide-divider {
-  width: 1px; height: 44px; background: var(--border);
-  margin: 0 20px; flex-shrink: 0; align-self: center;
+  width: 1px; height: 50px; background: var(--border);
+  margin: 0 24px; flex-shrink: 0; align-self: center;
 }
 
 /* ─── TOAST ─── */
