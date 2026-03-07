@@ -3,7 +3,7 @@ import os
 import tempfile
 import json
 from datetime import datetime
-from processor import process_all_files, tabs_to_excel_bytes
+from processor import process_all_files, tabs_to_excel_bytes, build_preview
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB
@@ -94,10 +94,13 @@ def process():
         with open(result_path, "wb") as f:
             f.write(excel_bytes)
 
+        previews = build_preview(final_tabs)
+
         return jsonify({
             "ok": True,
             "summary": summary,
             "filename": result_filename,
+            "previews": previews,
             "file_types": {
                 os.path.basename(p): m.get("type", "unknown")
                 for p, m in zip(tmp_paths, meta.values())

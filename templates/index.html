@@ -43,28 +43,6 @@
   </div>
 
   <main class="main">
-    <!-- 파일 타입 안내 -->
-    <section class="card guide-card">
-      <div class="card-body guide-grid">
-        <div class="guide-item seoul">
-          <div class="guide-badge">서울 B800 / B700</div>
-          <div class="guide-desc">단말기장애목록-날짜.xls</div>
-        </div>
-        <div class="guide-item seoul">
-          <div class="guide-badge">서울 B710</div>
-          <div class="guide-desc">단말기장애목록-날짜 B710원본.xls</div>
-        </div>
-        <div class="guide-item airport">
-          <div class="guide-badge">공항 B620</div>
-          <div class="guide-desc">단말기장애목록-날짜 (1) 공항원본.xls</div>
-        </div>
-        <div class="guide-item regional">
-          <div class="guide-badge">지역버스 전체</div>
-          <div class="guide-desc">장애조회(지역버스).xlsx</div>
-        </div>
-      </div>
-    </section>
-
     <!-- 업로드 영역 -->
     <section class="card upload-card">
       <div class="card-header">
@@ -75,7 +53,7 @@
         <div class="drop-zone" id="dropZone">
           <div class="drop-icon">📋</div>
           <p class="drop-text">파일을 여기에 끌어다 놓거나 클릭하여 선택하세요<br>
-          <span class="drop-hint">서울원본, B710원본, 공항원본, 지역버스 — 한 번에 모두 업로드 가능</span></p>
+          <span class="drop-hint">서울원본 · B710원본 · 공항원본 · 지역버스 — 한 번에 모두 업로드 가능</span></p>
           <input type="file" id="fileInput" accept=".xls,.xlsx" multiple hidden>
           <button class="btn btn-outline" onclick="document.getElementById('fileInput').click()">파일 선택</button>
         </div>
@@ -100,6 +78,22 @@
       </div>
     </section>
 
+    <!-- 미리보기 -->
+    <section class="card" id="previewCard" style="display:none">
+      <div class="card-header">
+        <span class="card-icon">🔍</span>
+        <h2>데이터 미리보기</h2>
+        <div class="tab-buttons" id="tabButtons"></div>
+      </div>
+      <div class="card-body table-wrapper">
+        <table class="data-table" id="previewTable">
+          <thead id="previewHead"></thead>
+          <tbody id="previewBody"></tbody>
+        </table>
+        <div class="empty-notice" id="emptyNotice" style="display:none">이 탭에는 장애 데이터가 없습니다.</div>
+      </div>
+    </section>
+
     <!-- 로딩 -->
     <div class="loading-overlay" id="loadingOverlay" style="display:none">
       <div class="loading-box">
@@ -108,7 +102,6 @@
       </div>
     </div>
 
-    <!-- 토스트 -->
     <div class="toast" id="toast"></div>
   </main>
 

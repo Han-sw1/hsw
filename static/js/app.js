@@ -1,16 +1,13 @@
 let selectedFiles = [];
 let resultFilename = null;
+let previewData = {};
 
-// 파일 타입별 배지 정보
-const FILE_TYPE_INFO = {
-  "서울":    { label: "서울 B700/B800", cls: "badge-seoul" },
-  "B710":    { label: "서울 B710",      cls: "badge-seoul" },
-  "B620":    { label: "공항 B620",      cls: "badge-airport" },
-  "지역버스": { label: "지역버스",       cls: "badge-regional" },
-  "unknown": { label: "미확인",         cls: "badge-unknown" },
-};
+const TAB_ORDER = [
+  "서울 B800", "서울 B700", "서울 B710", "공항 B620",
+  "대전 B650", "세종 B500", "제주 B400", "포항 B800",
+  "상주,영주,예천 B400", "안동 B520D", "김해 B600"
+];
 
-// 탭 → 색상 클래스
 function getTabClass(tab) {
   if (tab.startsWith("서울")) return "seoul";
   if (tab.startsWith("공항")) return "airport";
@@ -57,7 +54,6 @@ fileInput.addEventListener('change', e => {
   addFiles(Array.from(e.target.files));
   fileInput.value = '';
 });
-
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
 dropZone.addEventListener('drop', e => {
@@ -75,9 +71,7 @@ dropZone.addEventListener('click', e => {
 
 function addFiles(files) {
   const existing = new Set(selectedFiles.map(f => f.name));
-  files.forEach(f => {
-    if (!existing.has(f.name)) selectedFiles.push(f);
-  });
+  files.forEach(f => { if (!existing.has(f.name)) selectedFiles.push(f); });
   renderFileList();
   document.getElementById('btnProcess').disabled = selectedFiles.length === 0;
 }
@@ -88,16 +82,18 @@ function removeFile(name) {
   document.getElementById('btnProcess').disabled = selectedFiles.length === 0;
   if (!selectedFiles.length) {
     document.getElementById('resultCard').style.display = 'none';
+    document.getElementById('previewCard').style.display = 'none';
   }
 }
 
-function renderFileList() {
+function renderFileList(confirmed = false) {
   const list = document.getElementById('fileList');
   list.innerHTML = selectedFiles.map(f => `
     <div class="file-item">
       <span class="file-icon">📄</span>
       <span class="file-name">${f.name}</span>
-      <span class="file-type-badge badge-unknown" data-name="${f.name}">감지 전</span>
+      <span class="file-type-badge ${confirmed ? 'badge-confirmed' : 'badge-pending'}"
+            data-name="${f.name}">${confirmed ? '✓ 확인됨' : '감지 전'}</span>
       <button class="btn-remove-file" onclick="removeFile('${f.name.replace(/'/g, "\\'")}')">✕</button>
     </div>
   `).join('');
@@ -121,24 +117,23 @@ document.getElementById('btnProcess').addEventListener('click', async () => {
     }
 
     resultFilename = data.filename;
+    previewData = data.previews || {};
 
-    // 파일 타입 배지 업데이트
-    if (data.file_types) {
-      document.querySelectorAll('.file-type-badge').forEach(badge => {
-        const name = badge.dataset.name;
-        const type = data.file_types[name] || 'unknown';
-        const info = FILE_TYPE_INFO[type] || FILE_TYPE_INFO['unknown'];
-        badge.textContent = info.label;
-        badge.className = `file-type-badge ${info.cls}`;
-      });
-    }
+    // 파일 배지 → "확인됨"
+    renderFileList(true);
 
-    // 요약
-    renderSummary(data.summary);
+    // 요약 + 미리보기
+    renderSummary(data.summary || {});
+    renderTabButtons();
     document.getElementById('resultCard').style.display = 'block';
+    document.getElementById('previewCard').style.display = 'block';
 
-    const total = Object.values(data.summary).reduce((a, b) => a + b, 0);
-    showToast(`처리 완료! 총 ${total}건 (${Object.keys(data.summary).length}개 탭)`, 'success');
+    // 첫 번째 데이터 있는 탭 선택
+    const firstTab = TAB_ORDER.find(t => previewData[t] && previewData[t].count > 0) || TAB_ORDER[0];
+    selectTab(firstTab);
+
+    const total = Object.values(data.summary || {}).reduce((a, b) => a + b, 0);
+    showToast(`처리 완료! 총 ${total}건`, 'success');
     document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth' });
 
   } catch (e) {
@@ -157,13 +152,66 @@ document.getElementById('btnDownload').addEventListener('click', () => {
 // ─── 요약 렌더 ────────────────────────────────────
 function renderSummary(summary) {
   const grid = document.getElementById('summaryGrid');
-  grid.innerHTML = Object.entries(summary).map(([tab, count]) => `
-    <div class="summary-item ${getTabClass(tab)}">
-      <div class="summary-tab">${tab}</div>
-      <div class="summary-count">${count}</div>
-      <div class="summary-label">건</div>
-    </div>
-  `).join('');
+  grid.innerHTML = TAB_ORDER.map(tab => {
+    const count = summary[tab] ?? 0;
+    const isEmpty = count === 0;
+    const cls = getTabClass(tab);
+    return `
+      <div class="summary-item ${isEmpty ? 'empty-tab' : cls}" onclick="selectTab('${tab.replace(/'/g,"\\'")}')">
+        <div class="summary-tab">${tab}</div>
+        <div class="summary-count">${isEmpty ? '없음' : count}</div>
+        ${isEmpty ? '' : '<div class="summary-label">건</div>'}
+      </div>`;
+  }).join('');
+}
+
+// ─── 탭 버튼 ─────────────────────────────────────
+function renderTabButtons() {
+  const btns = document.getElementById('tabButtons');
+  btns.innerHTML = TAB_ORDER.map(tab => {
+    const cls = getTabClass(tab);
+    const count = previewData[tab] ? previewData[tab].count : 0;
+    return `<button class="tab-btn ${cls}" data-tab="${tab}" onclick="selectTab('${tab.replace(/'/g,"\\'")}')">
+      ${tab} ${count > 0 ? `<span style="opacity:.7">(${count})</span>` : ''}
+    </button>`;
+  }).join('');
+}
+
+let currentTab = null;
+function selectTab(tab) {
+  currentTab = tab;
+
+  // 요약 카드 활성화
+  document.querySelectorAll('.summary-item').forEach((el, i) => {
+    el.classList.toggle('active', TAB_ORDER[i] === tab);
+  });
+  // 탭 버튼 활성화
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+
+  const info = previewData[tab];
+  const table = document.getElementById('previewTable');
+  const emptyNotice = document.getElementById('emptyNotice');
+  const head = document.getElementById('previewHead');
+  const body = document.getElementById('previewBody');
+
+  if (!info || !info.cols || info.cols.length === 0) {
+    table.style.display = 'none';
+    emptyNotice.style.display = 'block';
+    return;
+  }
+
+  table.style.display = 'table';
+  emptyNotice.style.display = 'none';
+
+  const HIGHLIGHT = new Set(['날짜', 'cits', '월', '주차', '장애접수일']);
+  head.innerHTML = '<tr>' + info.cols.map(c => `<th>${c}</th>`).join('') + '</tr>';
+  body.innerHTML = info.rows.map(row =>
+    '<tr>' + info.cols.map(c =>
+      `<td class="${HIGHLIGHT.has(c) ? 'col-highlight' : ''}">${row[c] ?? ''}</td>`
+    ).join('') + '</tr>'
+  ).join('');
 }
 
 // ─── 유틸 ────────────────────────────────────────
