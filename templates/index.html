@@ -14,7 +14,7 @@
         <span class="logo-sub">에이텍모빌리티</span>
       </div>
       <h1 class="header-title">단말기 장애 자동화 시스템</h1>
-      <button class="btn-icon" id="btnSettings" title="설정">⚙</button>
+      <button class="btn-icon" id="btnSettings" title="기준파일 경로 설정">⚙</button>
     </div>
   </header>
 
@@ -28,11 +28,11 @@
       <div class="modal-body">
         <div class="form-group">
           <label>오류처리유형 기준 파일 (.xlsx)</label>
-          <input type="text" id="criteriaPath" placeholder="예: C:\Users\user\OneDrive\바탕 화면\260222\★오류처리유형 기준_260203_수정_B800구분추가.xlsx">
+          <input type="text" id="criteriaPath" placeholder="예: C:\Users\...\★오류처리유형 기준_....xlsx">
         </div>
         <div class="form-group">
           <label>CITS 단말기 차량정보 파일 (.xlsx)</label>
-          <input type="text" id="citsPath" placeholder="예: C:\Users\user\OneDrive\바탕 화면\260222\CITS 단말기 1600대 차량정보_210810(간편정리).xlsx">
+          <input type="text" id="citsPath" placeholder="예: C:\Users\...\CITS 단말기 1600대 차량정보_....xlsx">
         </div>
       </div>
       <div class="modal-footer">
@@ -43,76 +43,60 @@
   </div>
 
   <main class="main">
+    <!-- 파일 타입 안내 -->
+    <section class="card guide-card">
+      <div class="card-body guide-grid">
+        <div class="guide-item seoul">
+          <div class="guide-badge">서울 B800 / B700</div>
+          <div class="guide-desc">단말기장애목록-날짜.xls</div>
+        </div>
+        <div class="guide-item seoul">
+          <div class="guide-badge">서울 B710</div>
+          <div class="guide-desc">단말기장애목록-날짜 B710원본.xls</div>
+        </div>
+        <div class="guide-item airport">
+          <div class="guide-badge">공항 B620</div>
+          <div class="guide-desc">단말기장애목록-날짜 (1) 공항원본.xls</div>
+        </div>
+        <div class="guide-item regional">
+          <div class="guide-badge">지역버스 전체</div>
+          <div class="guide-desc">장애조회(지역버스).xlsx</div>
+        </div>
+      </div>
+    </section>
+
     <!-- 업로드 영역 -->
     <section class="card upload-card">
       <div class="card-header">
         <span class="card-icon">📂</span>
-        <h2>원본 장애 파일 업로드</h2>
+        <h2>원본 파일 업로드 <span class="sub-title">(여러 파일 동시 업로드 가능)</span></h2>
       </div>
       <div class="card-body">
         <div class="drop-zone" id="dropZone">
           <div class="drop-icon">📋</div>
-          <p class="drop-text">단말기장애목록 .xls 파일을 여기에 끌어다 놓거나<br>클릭하여 선택하세요</p>
-          <input type="file" id="fileInput" accept=".xls,.xlsx" hidden>
+          <p class="drop-text">파일을 여기에 끌어다 놓거나 클릭하여 선택하세요<br>
+          <span class="drop-hint">서울원본, B710원본, 공항원본, 지역버스 — 한 번에 모두 업로드 가능</span></p>
+          <input type="file" id="fileInput" accept=".xls,.xlsx" multiple hidden>
           <button class="btn btn-outline" onclick="document.getElementById('fileInput').click()">파일 선택</button>
         </div>
-        <div class="selected-file" id="selectedFile" style="display:none">
-          <span class="file-icon">📄</span>
-          <span id="fileName"></span>
-          <button class="btn-remove" id="removeFile">✕</button>
-        </div>
+        <div id="fileList" class="file-list"></div>
       </div>
       <div class="card-footer">
         <button class="btn btn-primary btn-lg" id="btnProcess" disabled>
-          <span class="btn-icon-text">⚡</span> 장애 데이터 처리
+          ⚡ 장애 데이터 처리
         </button>
       </div>
     </section>
 
     <!-- 처리 결과 요약 -->
-    <section class="card result-summary" id="resultSummary" style="display:none">
+    <section class="card" id="resultCard" style="display:none">
       <div class="card-header">
         <span class="card-icon">📊</span>
         <h2>처리 결과</h2>
         <button class="btn btn-primary btn-sm" id="btnDownload">⬇ 엑셀 다운로드</button>
       </div>
       <div class="card-body">
-        <div class="stats-grid">
-          <div class="stat-card">
-            <div class="stat-label">원본 전체</div>
-            <div class="stat-value" id="statTotal">-</div>
-          </div>
-          <div class="stat-arrow">→</div>
-          <div class="stat-card">
-            <div class="stat-label">B700/B800 필터</div>
-            <div class="stat-value accent" id="statB700B800">-</div>
-          </div>
-          <div class="stat-arrow">→</div>
-          <div class="stat-card">
-            <div class="stat-label">증상재현 필터</div>
-            <div class="stat-value accent" id="statReplay">-</div>
-          </div>
-          <div class="stat-arrow">→</div>
-          <div class="stat-card highlight">
-            <div class="stat-label">최종 장애 건수</div>
-            <div class="stat-value red" id="statFinal">-</div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- 미리보기 테이블 -->
-    <section class="card" id="previewCard" style="display:none">
-      <div class="card-header">
-        <span class="card-icon">🔍</span>
-        <h2>데이터 미리보기</h2>
-        <span class="preview-note">(최대 50행)</span>
-      </div>
-      <div class="card-body table-wrapper">
-        <table class="data-table" id="previewTable">
-          <thead id="previewHead"></thead>
-          <tbody id="previewBody"></tbody>
-        </table>
+        <div class="summary-grid" id="summaryGrid"></div>
       </div>
     </section>
 
@@ -124,7 +108,7 @@
       </div>
     </div>
 
-    <!-- 토스트 메시지 -->
+    <!-- 토스트 -->
     <div class="toast" id="toast"></div>
   </main>
 

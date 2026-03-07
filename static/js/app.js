@@ -1,7 +1,23 @@
-let selectedFile = null;
+let selectedFiles = [];
 let resultFilename = null;
 
-// ─── 설정 모달 ───
+// 파일 타입별 배지 정보
+const FILE_TYPE_INFO = {
+  "서울":    { label: "서울 B700/B800", cls: "badge-seoul" },
+  "B710":    { label: "서울 B710",      cls: "badge-seoul" },
+  "B620":    { label: "공항 B620",      cls: "badge-airport" },
+  "지역버스": { label: "지역버스",       cls: "badge-regional" },
+  "unknown": { label: "미확인",         cls: "badge-unknown" },
+};
+
+// 탭 → 색상 클래스
+function getTabClass(tab) {
+  if (tab.startsWith("서울")) return "seoul";
+  if (tab.startsWith("공항")) return "airport";
+  return "regional";
+}
+
+// ─── 설정 모달 ───────────────────────────────────────
 document.getElementById('btnSettings').addEventListener('click', () => {
   fetch('/api/config').then(r => r.json()).then(cfg => {
     document.getElementById('criteriaPath').value = cfg.criteria_path || '';
@@ -9,9 +25,10 @@ document.getElementById('btnSettings').addEventListener('click', () => {
     document.getElementById('settingsModal').classList.add('open');
   });
 });
-document.getElementById('closeSettings').addEventListener('click', closeSettings);
-document.getElementById('cancelSettings').addEventListener('click', closeSettings);
-document.getElementById('settingsModal').addEventListener('click', (e) => {
+['closeSettings', 'cancelSettings'].forEach(id =>
+  document.getElementById(id).addEventListener('click', closeSettings)
+);
+document.getElementById('settingsModal').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeSettings();
 });
 function closeSettings() {
@@ -32,56 +49,67 @@ document.getElementById('saveSettings').addEventListener('click', () => {
   });
 });
 
-// ─── 파일 선택 ───
+// ─── 파일 선택 ───────────────────────────────────────
 const fileInput = document.getElementById('fileInput');
 const dropZone = document.getElementById('dropZone');
 
-fileInput.addEventListener('change', (e) => {
-  if (e.target.files[0]) setFile(e.target.files[0]);
+fileInput.addEventListener('change', e => {
+  addFiles(Array.from(e.target.files));
+  fileInput.value = '';
 });
 
-dropZone.addEventListener('dragover', (e) => {
-  e.preventDefault();
-  dropZone.classList.add('dragover');
-});
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-dropZone.addEventListener('drop', (e) => {
+dropZone.addEventListener('drop', e => {
   e.preventDefault();
   dropZone.classList.remove('dragover');
-  const f = e.dataTransfer.files[0];
-  if (f && (f.name.endsWith('.xls') || f.name.endsWith('.xlsx'))) {
-    setFile(f);
-  } else {
-    showToast('.xls 또는 .xlsx 파일만 가능합니다.', 'error');
-  }
+  const valid = Array.from(e.dataTransfer.files).filter(f =>
+    f.name.endsWith('.xls') || f.name.endsWith('.xlsx')
+  );
+  if (!valid.length) return showToast('.xls 또는 .xlsx 파일만 가능합니다.', 'error');
+  addFiles(valid);
+});
+dropZone.addEventListener('click', e => {
+  if (e.target.tagName !== 'BUTTON') fileInput.click();
 });
 
-function setFile(f) {
-  selectedFile = f;
-  document.getElementById('dropZone').style.display = 'none';
-  document.getElementById('selectedFile').style.display = 'flex';
-  document.getElementById('fileName').textContent = f.name;
-  document.getElementById('btnProcess').disabled = false;
+function addFiles(files) {
+  const existing = new Set(selectedFiles.map(f => f.name));
+  files.forEach(f => {
+    if (!existing.has(f.name)) selectedFiles.push(f);
+  });
+  renderFileList();
+  document.getElementById('btnProcess').disabled = selectedFiles.length === 0;
 }
 
-document.getElementById('removeFile').addEventListener('click', () => {
-  selectedFile = null;
-  fileInput.value = '';
-  document.getElementById('dropZone').style.display = 'block';
-  document.getElementById('selectedFile').style.display = 'none';
-  document.getElementById('btnProcess').disabled = true;
-  document.getElementById('resultSummary').style.display = 'none';
-  document.getElementById('previewCard').style.display = 'none';
-});
+function removeFile(name) {
+  selectedFiles = selectedFiles.filter(f => f.name !== name);
+  renderFileList();
+  document.getElementById('btnProcess').disabled = selectedFiles.length === 0;
+  if (!selectedFiles.length) {
+    document.getElementById('resultCard').style.display = 'none';
+  }
+}
 
-// ─── 처리 ───
+function renderFileList() {
+  const list = document.getElementById('fileList');
+  list.innerHTML = selectedFiles.map(f => `
+    <div class="file-item">
+      <span class="file-icon">📄</span>
+      <span class="file-name">${f.name}</span>
+      <span class="file-type-badge badge-unknown" data-name="${f.name}">감지 전</span>
+      <button class="btn-remove-file" onclick="removeFile('${f.name.replace(/'/g, "\\'")}')">✕</button>
+    </div>
+  `).join('');
+}
+
+// ─── 처리 ──────────────────────────────────────────
 document.getElementById('btnProcess').addEventListener('click', async () => {
-  if (!selectedFile) return;
-
+  if (!selectedFiles.length) return;
   showLoading(true);
 
   const formData = new FormData();
-  formData.append('file', selectedFile);
+  selectedFiles.forEach(f => formData.append('files', f));
 
   try {
     const res = await fetch('/api/process', { method: 'POST', body: formData });
@@ -94,20 +122,24 @@ document.getElementById('btnProcess').addEventListener('click', async () => {
 
     resultFilename = data.filename;
 
+    // 파일 타입 배지 업데이트
+    if (data.file_types) {
+      document.querySelectorAll('.file-type-badge').forEach(badge => {
+        const name = badge.dataset.name;
+        const type = data.file_types[name] || 'unknown';
+        const info = FILE_TYPE_INFO[type] || FILE_TYPE_INFO['unknown'];
+        badge.textContent = info.label;
+        badge.className = `file-type-badge ${info.cls}`;
+      });
+    }
+
     // 요약
-    document.getElementById('statTotal').textContent = data.meta['원본_전체'];
-    document.getElementById('statB700B800').textContent = data.meta['B700B800_필터'];
-    document.getElementById('statReplay').textContent = data.meta['재현_필터'];
-    document.getElementById('statFinal').textContent = data.meta['장애_최종'];
-    document.getElementById('resultSummary').style.display = 'block';
+    renderSummary(data.summary);
+    document.getElementById('resultCard').style.display = 'block';
 
-    // 미리보기
-    renderPreview(data.preview, data.preview_cols);
-    document.getElementById('previewCard').style.display = 'block';
-
-    showToast(`처리 완료! 장애 ${data.meta['장애_최종']}건`, 'success');
-
-    document.getElementById('resultSummary').scrollIntoView({ behavior: 'smooth' });
+    const total = Object.values(data.summary).reduce((a, b) => a + b, 0);
+    showToast(`처리 완료! 총 ${total}건 (${Object.keys(data.summary).length}개 탭)`, 'success');
+    document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth' });
 
   } catch (e) {
     showToast('서버 오류: ' + e.message, 'error');
@@ -116,27 +148,25 @@ document.getElementById('btnProcess').addEventListener('click', async () => {
   }
 });
 
-// ─── 다운로드 ───
+// ─── 다운로드 ─────────────────────────────────────
 document.getElementById('btnDownload').addEventListener('click', () => {
   if (!resultFilename) return;
   window.location.href = '/api/download/' + encodeURIComponent(resultFilename);
 });
 
-// ─── 미리보기 테이블 ───
-function renderPreview(rows, cols) {
-  const highlight = new Set(['날짜', 'cits', '월', '주차']);
-  const thead = document.getElementById('previewHead');
-  const tbody = document.getElementById('previewBody');
-
-  thead.innerHTML = '<tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr>';
-  tbody.innerHTML = rows.map(row =>
-    '<tr>' + cols.map(c =>
-      `<td class="${highlight.has(c) ? 'col-highlight' : ''}">${row[c] ?? ''}</td>`
-    ).join('') + '</tr>'
-  ).join('');
+// ─── 요약 렌더 ────────────────────────────────────
+function renderSummary(summary) {
+  const grid = document.getElementById('summaryGrid');
+  grid.innerHTML = Object.entries(summary).map(([tab, count]) => `
+    <div class="summary-item ${getTabClass(tab)}">
+      <div class="summary-tab">${tab}</div>
+      <div class="summary-count">${count}</div>
+      <div class="summary-label">건</div>
+    </div>
+  `).join('');
 }
 
-// ─── 유틸 ───
+// ─── 유틸 ────────────────────────────────────────
 function showLoading(on) {
   document.getElementById('loadingOverlay').style.display = on ? 'flex' : 'none';
 }
@@ -147,5 +177,5 @@ function showToast(msg, type = '') {
   t.textContent = msg;
   t.className = 'toast' + (type ? ' ' + type : '') + ' show';
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
 }

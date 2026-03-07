@@ -3,71 +3,155 @@ import xlrd
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
-from datetime import date, timedelta, datetime
+from datetime import date, timedelta
 import io
-import re
 
+
+# ─── 상수 ───────────────────────────────────────────────
+
+# 지역버스 처리부서 → 탭명 매핑
+REGIONAL_TAB_MAP = {
+    "[G1]계룡센터":  "대전 B650",
+    "[G1]대전센터":  "대전 B650",
+    "[G1]세종센터":  "세종 B500",
+    "[G1]제주센터":  "제주 B400",
+    "[G1]포항센터":  "포항 B800",
+    "[G1]상주센터":  "상주,영주,예천 B400",
+    "[G1]영주센터":  "상주,영주,예천 B400",
+    "[G1]예천센터":  "상주,영주,예천 B400",
+    "[G1]안동센터":  "안동 B520D",
+    "[G1]김해센터":  "김해 B600",
+}
+
+# 탭 출력 순서
+TAB_ORDER = [
+    "서울 B800", "서울 B700", "서울 B710", "공항 B620",
+    "대전 B650", "세종 B500", "제주 B400", "포항 B800",
+    "상주,영주,예천 B400", "안동 B520D", "김해 B600",
+]
+
+# 단말기구분 키워드 → 탭명
+DEVICE_TAB_MAP = {
+    "B800": "서울 B800",
+    "B700": "서울 B700",
+    "B710": "서울 B710",
+    "B620": "공항 B620",
+}
+
+# 단말기구분 키워드 → 기준파일 컬럼명 (B620은 헤더 정리 후)
+DEVICE_CRITERIA_COL = {
+    "B800": "B800",
+    "B700": "B700",
+    "B710": "B710",
+    "B620": "B620(공항)",
+}
+
+# 탭별 헤더 배경색
+TAB_COLORS = {
+    "서울 B800":          "CE0E2D",
+    "서울 B700":          "CE0E2D",
+    "서울 B710":          "CE0E2D",
+    "공항 B620":          "1A5276",
+    "대전 B650":          "1E8449",
+    "세종 B500":          "1E8449",
+    "제주 B400":          "1E8449",
+    "포항 B800":          "1E8449",
+    "상주,영주,예천 B400": "1E8449",
+    "안동 B520D":         "1E8449",
+    "김해 B600":          "1E8449",
+}
+
+
+# ─── 날짜/주차 유틸 ────────────────────────────────────
 
 def get_week_label(d):
-    """전주목요일~금주수요일 기준 주차 레이블 반환 (예: '2월4주')"""
+    """전주목~금주수 기준 주차 레이블 (예: '2월4주')"""
     if not isinstance(d, date):
         return ""
-    weekday = d.weekday()  # Mon=0, ..., Thu=3, ..., Wed=2
-    days_to_wed = (2 - weekday) % 7
+    days_to_wed = (2 - d.weekday()) % 7
     week_end_wed = d + timedelta(days=days_to_wed)
     week_start_thu = week_end_wed - timedelta(days=6)
-
     month = week_end_wed.month
     year = week_end_wed.year
-
     first_day = date(year, month, 1)
-    days_to_first_wed = (2 - first_day.weekday()) % 7
-    first_wednesday = first_day + timedelta(days=days_to_first_wed)
+    first_wednesday = first_day + timedelta(days=(2 - first_day.weekday()) % 7)
     first_thursday = first_wednesday - timedelta(days=6)
-
     week_num = (week_start_thu - first_thursday).days // 7 + 1
     return f"{month}월{week_num}주"
 
 
 def parse_date_from_str(val):
-    """장애접수일시 문자열(yyyymmddHHMMSS)에서 date 반환"""
+    """yyyymmddHHMMSS → date"""
     try:
-        s = str(int(val))
+        s = str(int(float(val)))
         return date(int(s[:4]), int(s[4:6]), int(s[6:8]))
     except Exception:
         return None
 
 
-def get_device_col(단말기구분):
-    """단말기구분에서 B700/B800 컬럼명 반환"""
-    if "B800" in str(단말기구분):
-        return "B800"
-    elif "B700" in str(단말기구분):
-        return "B700"
-    return None
+def parse_date_from_datetime_str(val):
+    """'2026-02-19 12:10' 또는 datetime → date"""
+    try:
+        if isinstance(val, date):
+            return val
+        s = str(val).strip()
+        return pd.to_datetime(s).date()
+    except Exception:
+        return None
 
+
+# ─── 파일 로드 ─────────────────────────────────────────
+
+def load_xls_as_df(path):
+    """xls 파일 → DataFrame (cp949 인코딩)"""
+    wb = xlrd.open_workbook(path, encoding_override='cp949')
+    ws = wb.sheet_by_index(0)
+    headers = ws.row_values(0)
+    rows = [ws.row_values(i) for i in range(1, ws.nrows)]
+    return pd.DataFrame(rows, columns=headers)
+
+
+def load_file_as_df(path):
+    """xls/xlsx 자동 로드"""
+    if path.lower().endswith('.xlsx'):
+        return pd.read_excel(path, dtype=str)
+    else:
+        return load_xls_as_df(path)
+
+
+def detect_file_type(df):
+    """DataFrame 내용으로 파일 유형 감지"""
+    cols = list(df.columns)
+    # 지역버스: 'No' 컬럼 + '처리부서' 컬럼 존재
+    if "No" in cols and "처리부서" in cols:
+        return "지역버스"
+    if "단말기구분" not in cols:
+        return "unknown"
+    types_str = " ".join(df["단말기구분"].astype(str).tolist())
+    if "B710" in types_str:
+        return "B710"
+    if "B620" in types_str:
+        return "B620"
+    return "서울"  # B700, B800 혼재
+
+
+# ─── 기준파일 로드 ──────────────────────────────────────
 
 def load_error_criteria(criteria_path):
-    """오류처리유형 기준 파일 로드 → {코드값명: {B700: 장애여부, B800: 장애여부}} dict"""
+    """오류처리유형 기준 파일 → {코드값명: row_dict}"""
     df = pd.read_excel(criteria_path, dtype=str)
-    # 컬럼명 공백/개행 정리
     df.columns = [str(c).strip().replace('\n', '') for c in df.columns]
-
     criteria = {}
     for _, row in df.iterrows():
         name = str(row.get("코드값명", "")).strip()
         if not name or name == "nan":
             continue
-        criteria[name] = {
-            "B700": str(row.get("B700", "")).strip(),
-            "B800": str(row.get("B800", "")).strip(),
-            "장애여부": str(row.get("장애여부", "")).strip(),
-        }
+        criteria[name] = {c: str(v).strip() for c, v in row.items()}
     return criteria
 
 
 def load_cits_map(cits_path):
-    """CITS 기준 파일 로드 → {차량번호: 설치일(date)} dict"""
+    """CITS 기준 파일 → {차량번호: 설치일(date)}"""
     df = pd.read_excel(cits_path, dtype=str)
     df.columns = [str(c).strip() for c in df.columns]
     cits_map = {}
@@ -76,164 +160,313 @@ def load_cits_map(cits_path):
         설치일 = row.get("설치일", "")
         if 차번 and 차번 != "nan":
             try:
-                if 설치일 and 설치일 != "nan":
-                    d = pd.to_datetime(설치일).date()
-                    cits_map[차번] = d
-                else:
-                    cits_map[차번] = None
+                cits_map[차번] = pd.to_datetime(설치일).date() if 설치일 and 설치일 != "nan" else None
             except Exception:
                 cits_map[차번] = None
     return cits_map
 
 
-def is_비장애(오류유형, device_col, criteria):
-    """오류유형이 기준파일에서 비장애인지 확인"""
-    if not 오류유형 or str(오류유형).strip() in ("", "nan"):
-        return False
+# ─── 비장애 판별 ────────────────────────────────────────
+
+def is_비장애_with_col(오류유형, device_criteria_col, criteria):
+    """특정 단말기 컬럼 기준으로 비장애 여부 판별"""
     key = str(오류유형).strip()
+    if not key or key == "nan":
+        return False
     if key not in criteria:
         return False
     row = criteria[key]
-    # 해당 단말기 컬럼에 'o'가 없으면 적용 안됨 → 장애로 처리
-    device_val = row.get(device_col, "")
-    if str(device_val).strip().lower() != "o":
+    # 해당 단말기에 'o' 없으면 적용 안됨
+    if str(row.get(device_criteria_col, "")).lower() != "o":
         return False
     return row.get("장애여부", "").strip() == "비장애"
 
 
-def process_fault_file(raw_path, criteria_path, cits_path):
+def is_비장애_any(오류유형, criteria):
+    """단말기 구분 없이 비장애 여부 판별 (지역버스용)"""
+    key = str(오류유형).strip()
+    if not key or key == "nan":
+        return False
+    if key not in criteria:
+        return False
+    return criteria[key].get("장애여부", "").strip() == "비장애"
+
+
+# ─── 서울 B700/B800 처리 ───────────────────────────────
+
+def process_seoul(df, criteria, cits_map):
     """
-    원본 xls → 필터/가공 → (DataFrame, 메타정보)
+    서울 원본 → B700 탭 df, B800 탭 df
+    returns: {"서울 B700": df, "서울 B800": df}
     """
-    # 원본 로드
-    wb = xlrd.open_workbook(raw_path, encoding_override='cp949')
-    ws = wb.sheet_by_index(0)
-    headers = ws.row_values(0)
-    rows = [ws.row_values(i) for i in range(1, ws.nrows)]
-    df = pd.DataFrame(rows, columns=headers)
+    result = {}
+    for device_key, tab_name in [("B800", "서울 B800"), ("B700", "서울 B700")]:
+        d = df[df["단말기구분"].astype(str).str.contains(device_key, na=False)].copy()
+        if d.empty:
+            continue
 
-    original_count = len(df)
+        # 재현 필터
+        d = d[d["증상 재현여부"].astype(str).str.strip() == "재현"]
 
-    # 1. B700 / B800 필터
-    df = df[df["단말기구분"].astype(str).str.contains("B700|B800", na=False)]
-    b700b800_count = len(df)
+        # 비장애 필터
+        crit_col = DEVICE_CRITERIA_COL[device_key]
+        def ok(row, cc=crit_col):
+            if is_비장애_with_col(row.get("접수오류유형", ""), cc, criteria):
+                return False
+            if is_비장애_with_col(row.get("현장처리유형", ""), cc, criteria):
+                return False
+            return True
+        if not d.empty:
+            d = d[d.apply(ok, axis=1).astype(bool)]
+        if d.empty:
+            continue
 
-    # 2. 증상 재현여부 = "재현" 필터
-    df = df[df["증상 재현여부"].astype(str).str.strip() == "재현"]
-    재현_count = len(df)
+        # 날짜 파싱 및 정렬
+        d["_날짜"] = d["장애접수일시"].apply(parse_date_from_str)
+        d = d.sort_values("_날짜").reset_index(drop=True)
 
-    # 3. 오류처리유형 기준 필터
+        # 추가 컬럼
+        d["날짜"] = d["_날짜"]
+        d["cits"] = d.apply(lambda r: cits_map.get(str(r["차량번호"]).strip(), "#N/A"), axis=1)
+        d["월"] = d["_날짜"].apply(lambda x: f"{x.month}월" if x else "")
+        d["주차"] = d["_날짜"].apply(get_week_label)
+
+        # 컬럼 순서: 장애접수일시 뒤에 날짜/cits/월/주차 삽입
+        orig = [c for c in d.columns if c not in ("_날짜", "날짜", "cits", "월", "주차")]
+        idx = orig.index("장애접수일시") + 1
+        final_cols = orig[:idx] + ["날짜", "cits", "월", "주차"] + orig[idx:]
+        result[tab_name] = d[final_cols]
+
+    return result
+
+
+# ─── B710 / B620 처리 ──────────────────────────────────
+
+def process_b710_b620(df, device_key, tab_name, criteria):
+    """
+    B710 또는 B620 원본 → 탭 df
+    device_key: 'B710' 또는 'B620'
+    """
+    d = df[df["단말기구분"].astype(str).str.contains(device_key, na=False)].copy()
+    if d.empty:
+        return None
+
+    # 재현 필터
+    d = d[d["증상 재현여부"].astype(str).str.strip() == "재현"]
+
+    # 비장애 필터
+    crit_col = DEVICE_CRITERIA_COL[device_key]
+    def ok(row, cc=crit_col):
+        if is_비장애_with_col(row.get("접수오류유형", ""), cc, criteria):
+            return False
+        if is_비장애_with_col(row.get("현장처리유형", ""), cc, criteria):
+            return False
+        return True
+    if not d.empty:
+        d = d[d.apply(ok, axis=1).astype(bool)]
+    if d.empty:
+        return None
+
+    # 날짜 파싱 및 정렬
+    d["_날짜"] = d["장애접수일시"].apply(parse_date_from_str)
+    d = d.sort_values("_날짜").reset_index(drop=True)
+
+    # 추가 컬럼 (CITS 없음)
+    d["날짜"] = d["_날짜"]
+    d["월"] = d["_날짜"].apply(lambda x: f"{x.month}월" if x else "")
+    d["주차"] = d["_날짜"].apply(get_week_label)
+
+    orig = [c for c in d.columns if c not in ("_날짜", "날짜", "월", "주차")]
+    idx = orig.index("장애접수일시") + 1
+    final_cols = orig[:idx] + ["날짜", "월", "주차"] + orig[idx:]
+    return d[final_cols]
+
+
+# ─── 지역버스 처리 ─────────────────────────────────────
+
+def process_regional(df, criteria):
+    """
+    지역버스 원본 → {탭명: df} dict
+    """
+    # No열 삭제
+    if "No" in df.columns:
+        df = df.drop(columns=["No"])
+
+    # 장애접수일시 → 날짜만 (rename to 장애접수일)
+    df["장애접수일시"] = df["장애접수일시"].apply(
+        lambda v: parse_date_from_datetime_str(v) if pd.notna(v) else None
+    )
+    df = df.rename(columns={"장애접수일시": "장애접수일"})
+
+    # 비장애 필터 (단말기현장처리 기준)
+    def ok(row):
+        return not is_비장애_any(row.get("단말기현장처리", ""), criteria)
+    if not df.empty:
+        df = df[df.apply(ok, axis=1).astype(bool)]
+
+    # 날짜 정렬
+    df = df.sort_values("장애접수일").reset_index(drop=True)
+
+    # 월/주차 추가
+    df["월"] = df["장애접수일"].apply(lambda x: f"{x.month}월" if isinstance(x, date) else "")
+    df["주차"] = df["장애접수일"].apply(get_week_label)
+
+    # 컬럼 순서: 접수번호, 장애접수일, 월, 주차, 나머지
+    other_cols = [c for c in df.columns if c not in ("접수번호", "장애접수일", "월", "주차")]
+    final_cols = ["접수번호", "장애접수일", "월", "주차"] + other_cols
+    df = df[[c for c in final_cols if c in df.columns]]
+
+    # 처리부서 기준으로 탭 분류
+    result = {}
+    for _, row in df.iterrows():
+        부서 = str(row.get("처리부서", "")).strip()
+        tab = REGIONAL_TAB_MAP.get(부서)
+        if not tab:
+            continue
+        if tab not in result:
+            result[tab] = []
+        result[tab].append(row)
+
+    return {tab: pd.DataFrame(rows).reset_index(drop=True)
+            for tab, rows in result.items()}
+
+
+# ─── 통합 처리 ─────────────────────────────────────────
+
+def process_all_files(file_paths, criteria_path, cits_path):
+    """
+    여러 파일 경로 → {탭명: df} dict + 메타 정보
+    """
     criteria = load_error_criteria(criteria_path)
     cits_map = load_cits_map(cits_path)
 
-    def 장애여부_ok(row):
-        device_col = get_device_col(row["단말기구분"])
-        if not device_col:
-            return False
-        접수 = str(row.get("접수오류유형", "")).strip()
-        현장 = str(row.get("현장처리유형", "")).strip()
-        if is_비장애(접수, device_col, criteria):
-            return False
-        if is_비장애(현장, device_col, criteria):
-            return False
-        return True
+    all_tabs = {}   # 탭명 → df 리스트 (누적)
+    meta = {}
 
-    df = df[df.apply(장애여부_ok, axis=1)]
-    장애_count = len(df)
+    for path in file_paths:
+        try:
+            df = load_file_as_df(path)
+        except Exception as e:
+            meta[path] = {"error": str(e)}
+            continue
 
-    # 4. 날짜 파싱 및 오름차순 정렬
-    df["_날짜_obj"] = df["장애접수일시"].apply(parse_date_from_str)
-    df = df.sort_values("_날짜_obj").reset_index(drop=True)
+        file_type = detect_file_type(df)
+        meta[path] = {"type": file_type, "원본행수": len(df)}
 
-    # 5. 추가 컬럼 계산
-    def get_cits(row):
-        차번 = str(row.get("차량번호", "")).strip()
-        device_col = get_device_col(row["단말기구분"])
-        if device_col not in ("B700", "B800"):
-            return None
-        return cits_map.get(차번, "#N/A")
+        if file_type == "서울":
+            tabs = process_seoul(df, criteria, cits_map)
+            for tab, tdf in tabs.items():
+                all_tabs.setdefault(tab, []).append(tdf)
+                meta[path][tab] = len(tdf)
 
-    날짜_col = df["_날짜_obj"].apply(lambda d: d if d else None)
-    cits_col = df.apply(get_cits, axis=1)
-    월_col = df["_날짜_obj"].apply(lambda d: f"{d.month}월" if d else "")
-    주차_col = df["_날짜_obj"].apply(lambda d: get_week_label(d) if d else "")
+        elif file_type in ("B710", "B620"):
+            device_key = file_type
+            tab_name = DEVICE_TAB_MAP[device_key]
+            tdf = process_b710_b620(df, device_key, tab_name, criteria)
+            if tdf is not None and not tdf.empty:
+                all_tabs.setdefault(tab_name, []).append(tdf)
+                meta[path][tab_name] = len(tdf)
 
-    # 6. 컬럼 순서 재배치 (원본 컬럼 사이에 삽입)
-    orig_cols = [c for c in df.columns if c != "_날짜_obj"]
-    # 장애접수일시 다음에 날짜, cits, 월, 주차 삽입
-    idx = orig_cols.index("장애접수일시") + 1
-    new_cols_order = orig_cols[:idx] + ["날짜", "cits", "월", "주차"] + orig_cols[idx:]
+        elif file_type == "지역버스":
+            tabs = process_regional(df, criteria)
+            for tab, tdf in tabs.items():
+                all_tabs.setdefault(tab, []).append(tdf)
+                meta[path][tab] = len(tdf)
 
-    df["날짜"] = 날짜_col
-    df["cits"] = cits_col
-    df["월"] = 월_col
-    df["주차"] = 주차_col
+        else:
+            meta[path]["error"] = "파일 유형을 인식할 수 없습니다."
 
-    result_df = df[new_cols_order]
+    # 탭별 df 합치기
+    final_tabs = {}
+    for tab, dfs in all_tabs.items():
+        combined = pd.concat(dfs, ignore_index=True)
+        # 날짜 기준 재정렬
+        date_col = "날짜" if "날짜" in combined.columns else "장애접수일"
+        if date_col in combined.columns:
+            combined = combined.sort_values(date_col).reset_index(drop=True)
+        final_tabs[tab] = combined
 
-    meta = {
-        "원본_전체": original_count,
-        "B700B800_필터": b700b800_count,
-        "재현_필터": 재현_count,
-        "장애_최종": 장애_count,
+    # 집계 메타
+    summary = {tab: len(df) for tab, df in final_tabs.items()}
+
+    return final_tabs, summary, meta
+
+
+# ─── Excel 출력 ────────────────────────────────────────
+
+def make_cell_style(header_color="CE0E2D"):
+    thin = Side(style="thin", color="DDDDDD")
+    return {
+        "header_fill": PatternFill("solid", fgColor=header_color),
+        "header_font": Font(bold=True, color="FFFFFF", size=10),
+        "header_align": Alignment(horizontal="center", vertical="center", wrap_text=True),
+        "odd_fill": PatternFill("solid", fgColor="FFF5F5"),
+        "even_fill": PatternFill("solid", fgColor="FFFFFF"),
+        "highlight_fill": PatternFill("solid", fgColor="FFE8E8"),
+        "cell_font": Font(size=9),
+        "cell_align": Alignment(horizontal="center", vertical="center"),
+        "border": Border(left=thin, right=thin, top=thin, bottom=thin),
     }
 
-    return result_df, meta
+
+HIGHLIGHT_COLS = {"날짜", "cits", "월", "주차", "장애접수일"}
 
 
-def df_to_excel_bytes(df):
-    """DataFrame → 스타일 적용된 xlsx bytes"""
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "장애목록"
-
-    # 색상 정의
-    HEADER_BG = "CE0E2D"
-    HEADER_FONT = "FFFFFF"
-    ROW_ODD = "FFF5F5"
-    ROW_EVEN = "FFFFFF"
-    HIGHLIGHT_COLS = {"날짜", "cits", "월", "주차"}
-    HIGHLIGHT_BG = "FFE8E8"
-
-    thin = Side(style="thin", color="DDDDDD")
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
-
+def write_sheet(ws, df, tab_name):
+    style = make_cell_style(TAB_COLORS.get(tab_name, "CE0E2D"))
     headers = list(df.columns)
 
     # 헤더 행
-    for col_idx, col_name in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col_idx, value=col_name)
-        cell.fill = PatternFill("solid", fgColor=HEADER_BG)
-        cell.font = Font(bold=True, color=HEADER_FONT, size=10)
-        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        cell.border = border
-
-    ws.row_dimensions[1].height = 30
+    for ci, col in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=ci, value=col)
+        cell.fill = style["header_fill"]
+        cell.font = style["header_font"]
+        cell.alignment = style["header_align"]
+        cell.border = style["border"]
+    ws.row_dimensions[1].height = 28
 
     # 데이터 행
-    for row_idx, (_, row) in enumerate(df.iterrows(), 2):
-        bg = ROW_ODD if row_idx % 2 == 0 else ROW_EVEN
-        for col_idx, col_name in enumerate(headers, 1):
-            val = row[col_name]
-            if val is None:
-                val = "#N/A"
-            elif isinstance(val, float) and pd.isna(val):
+    for ri, (_, row) in enumerate(df.iterrows(), 2):
+        for ci, col in enumerate(headers, 1):
+            val = row[col]
+            if val is None or (isinstance(val, float) and pd.isna(val)):
                 val = ""
-            cell = ws.cell(row=row_idx, column=col_idx, value=val)
-            fill_color = HIGHLIGHT_BG if col_name in HIGHLIGHT_COLS else bg
-            cell.fill = PatternFill("solid", fgColor=fill_color)
-            cell.font = Font(size=9)
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-            cell.border = border
+            cell = ws.cell(row=ri, column=ci, value=val)
+            if col in HIGHLIGHT_COLS:
+                cell.fill = style["highlight_fill"]
+            elif ri % 2 == 0:
+                cell.fill = style["odd_fill"]
+            else:
+                cell.fill = style["even_fill"]
+            cell.font = style["cell_font"]
+            cell.alignment = style["cell_align"]
+            cell.border = style["border"]
 
-    # 열 너비 자동 조정
-    for col_idx, col_name in enumerate(headers, 1):
-        col_letter = get_column_letter(col_idx)
-        max_len = max(len(str(col_name)), 8)
-        ws.column_dimensions[col_letter].width = min(max_len + 2, 30)
+    # 열 너비
+    for ci, col in enumerate(headers, 1):
+        ws.column_dimensions[get_column_letter(ci)].width = min(len(str(col)) + 4, 28)
 
-    # 헤더 고정
     ws.freeze_panes = "A2"
+
+
+def tabs_to_excel_bytes(final_tabs):
+    """탭별 df dict → 멀티시트 xlsx bytes"""
+    wb = Workbook()
+    wb.remove(wb.active)  # 기본 시트 제거
+
+    # TAB_ORDER 순서대로 시트 생성
+    for tab_name in TAB_ORDER:
+        if tab_name not in final_tabs:
+            continue
+        df = final_tabs[tab_name]
+        ws = wb.create_sheet(title=tab_name)
+        write_sheet(ws, df, tab_name)
+
+    # TAB_ORDER에 없는 탭 추가 (혹시 있을 경우)
+    for tab_name, df in final_tabs.items():
+        if tab_name not in TAB_ORDER:
+            ws = wb.create_sheet(title=tab_name)
+            write_sheet(ws, df, tab_name)
 
     buf = io.BytesIO()
     wb.save(buf)
