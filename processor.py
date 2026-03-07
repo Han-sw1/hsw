@@ -1,6 +1,6 @@
 import pandas as pd
 import xlrd
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from datetime import date, timedelta
@@ -56,8 +56,6 @@ TAB_COLORS = {
     "김해 B600":           "1E8449",
 }
 
-# 지역버스 단말기현장처리 하드코딩 비장애 값
-REGIONAL_비장애_HARDCODED = {"이상없음", "기타", "기처리건", "차량Fuse교체"}
 
 # 접수구분 허용값
 접수구분_서울 = {"전화접수"}
@@ -132,16 +130,27 @@ def detect_file_type(df):
 
 # ─── 기준파일 로드 ──────────────────────────────────────
 
-def load_error_criteria(criteria_path):
-    df = pd.read_excel(criteria_path, dtype=str)
-    df.columns = [str(c).strip().replace('\n', '') for c in df.columns]
+def _load_sheet_as_criteria(wb, sheet_name):
+    """엑셀 시트 → {코드값명: row_dict}"""
+    ws = wb[sheet_name]
+    headers = [str(c.value).strip().replace('\n', '') if c.value else '' for c in ws[1]]
     criteria = {}
-    for _, row in df.iterrows():
-        name = str(row.get("코드값명", "")).strip()
-        if not name or name == "nan":
+    for row in list(ws.iter_rows())[1:]:
+        vals = {headers[i]: str(cell.value).strip() if cell.value is not None else ""
+                for i, cell in enumerate(row) if i < len(headers)}
+        name = vals.get("코드값명", "").strip()
+        if not name or name == "None":
             continue
-        criteria[name] = {c: str(v).strip() for c, v in row.items()}
+        criteria[name] = vals
     return criteria
+
+
+def load_error_criteria(criteria_path):
+    """기준파일 → (오류유형 dict, 처리유형 dict)"""
+    wb = load_workbook(criteria_path)
+    criteria_error = _load_sheet_as_criteria(wb, "오류유형")
+    criteria_처리 = _load_sheet_as_criteria(wb, "처리유형")
+    return criteria_error, criteria_처리
 
 
 def load_cits_map(cits_path):
@@ -161,25 +170,11 @@ def load_cits_map(cits_path):
 
 # ─── 비장애 판별 ────────────────────────────────────────
 
-def is_비장애_with_col(오류유형, device_criteria_col, criteria):
+def is_비장애(오류유형, criteria):
+    """코드값명으로 기준파일에서 비장애 여부 판별"""
     key = str(오류유형).strip()
-    if not key or key == "nan":
+    if not key or key in ("", "nan", "None"):
         return False
-    if key not in criteria:
-        return False
-    row = criteria[key]
-    if str(row.get(device_criteria_col, "")).lower() != "o":
-        return False
-    return row.get("장애여부", "").strip() == "비장애"
-
-
-def is_비장애_any(오류유형, criteria):
-    key = str(오류유형).strip()
-    if not key or key == "nan":
-        return False
-    # 하드코딩 비장애 우선 확인
-    if key in REGIONAL_비장애_HARDCODED:
-        return True
     if key not in criteria:
         return False
     return criteria[key].get("장애여부", "").strip() == "비장애"
@@ -187,7 +182,7 @@ def is_비장애_any(오류유형, criteria):
 
 # ─── 서울 B700/B800 처리 ───────────────────────────────
 
-def process_seoul(df, criteria, cits_map):
+def process_seoul(df, criteria_error, criteria_처리, cits_map):
     result = {}
     for device_key, tab_name in [("B800", "서울 B800"), ("B700", "서울 B700")]:
         d = df[df["단말기구분"].astype(str).str.contains(device_key, na=False)].copy()
@@ -203,11 +198,10 @@ def process_seoul(df, criteria, cits_map):
         d = d[d["증상 재현여부"].astype(str).str.strip() == "재현"]
 
         # 비장애 필터
-        crit_col = DEVICE_CRITERIA_COL[device_key]
-        def ok(row, cc=crit_col):
-            if is_비장애_with_col(row.get("접수오류유형", ""), cc, criteria):
+        def ok(row):
+            if is_비장애(row.get("접수오류유형", ""), criteria_error):
                 return False
-            if is_비장애_with_col(row.get("현장처리유형", ""), cc, criteria):
+            if is_비장애(row.get("현장처리유형", ""), criteria_처리):
                 return False
             return True
         if not d.empty:
@@ -232,7 +226,7 @@ def process_seoul(df, criteria, cits_map):
 
 # ─── B710 / B620 처리 ──────────────────────────────────
 
-def process_b710_b620(df, device_key, tab_name, criteria, allowed_접수구분=None):
+def process_b710_b620(df, device_key, tab_name, criteria_error, criteria_처리, allowed_접수구분=None):
     if allowed_접수구분 is None:
         allowed_접수구분 = 접수구분_서울
 
@@ -249,11 +243,10 @@ def process_b710_b620(df, device_key, tab_name, criteria, allowed_접수구분=N
     d = d[d["증상 재현여부"].astype(str).str.strip() == "재현"]
 
     # 비장애 필터
-    crit_col = DEVICE_CRITERIA_COL[device_key]
-    def ok(row, cc=crit_col):
-        if is_비장애_with_col(row.get("접수오류유형", ""), cc, criteria):
+    def ok(row):
+        if is_비장애(row.get("접수오류유형", ""), criteria_error):
             return False
-        if is_비장애_with_col(row.get("현장처리유형", ""), cc, criteria):
+        if is_비장애(row.get("현장처리유형", ""), criteria_처리):
             return False
         return True
     if not d.empty:
@@ -275,7 +268,7 @@ def process_b710_b620(df, device_key, tab_name, criteria, allowed_접수구분=N
 
 # ─── 지역버스 처리 ─────────────────────────────────────
 
-def process_regional(df, criteria):
+def process_regional(df, criteria_처리):
     if "No" in df.columns:
         df = df.drop(columns=["No"])
 
@@ -291,7 +284,7 @@ def process_regional(df, criteria):
 
     # 비장애 필터 (단말기현장처리 기준 + 하드코딩)
     def ok(row):
-        return not is_비장애_any(row.get("단말기현장처리", ""), criteria)
+        return not is_비장애(row.get("단말기현장처리", ""), criteria_처리)
     if not df.empty:
         df = df[df.apply(ok, axis=1).astype(bool)]
 
@@ -317,7 +310,7 @@ def process_regional(df, criteria):
 # ─── 통합 처리 ─────────────────────────────────────────
 
 def process_all_files(file_paths, criteria_path, cits_path):
-    criteria = load_error_criteria(criteria_path)
+    criteria_error, criteria_처리 = load_error_criteria(criteria_path)
     cits_map = load_cits_map(cits_path)
 
     all_tabs = {}
@@ -334,7 +327,7 @@ def process_all_files(file_paths, criteria_path, cits_path):
         meta[path] = {"type": file_type, "원본행수": len(df)}
 
         if file_type == "서울":
-            tabs = process_seoul(df, criteria, cits_map)
+            tabs = process_seoul(df, criteria_error, criteria_처리, cits_map)
             for tab, tdf in tabs.items():
                 all_tabs.setdefault(tab, []).append(tdf)
                 meta[path][tab] = len(tdf)
@@ -343,13 +336,13 @@ def process_all_files(file_paths, criteria_path, cits_path):
             device_key = file_type
             tab_name = DEVICE_TAB_MAP[device_key]
             allowed = 접수구분_공항지역 if device_key == "B620" else 접수구분_서울
-            tdf = process_b710_b620(df, device_key, tab_name, criteria, allowed)
+            tdf = process_b710_b620(df, device_key, tab_name, criteria_error, criteria_처리, allowed)
             if tdf is not None and not tdf.empty:
                 all_tabs.setdefault(tab_name, []).append(tdf)
                 meta[path][tab_name] = len(tdf)
 
         elif file_type == "지역버스":
-            tabs = process_regional(df, criteria)
+            tabs = process_regional(df, criteria_처리)
             for tab, tdf in tabs.items():
                 all_tabs.setdefault(tab, []).append(tdf)
                 meta[path][tab] = len(tdf)
