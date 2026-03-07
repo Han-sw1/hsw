@@ -17,7 +17,7 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif;
+  font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif;
   background: #ECEDF2;
   color: var(--gray-dark);
   min-height: 100vh;
