@@ -8,6 +8,27 @@
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
   <style>
+    /* ─── 현황 요약 카드 ─── */
+    .quick-tab-card {
+      flex: 1 1 120px; min-width: 110px; max-width: 160px;
+      padding: 12px 14px; border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .quick-tab-card:last-child { border-right: none; }
+    .quick-tab-name { font-size: 11px; font-weight: 700; color: var(--gray); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .quick-tab-count { font-size: 22px; font-weight: 800; color: var(--gray-dark); line-height: 1.1; }
+    .quick-tab-rate { font-size: 11px; font-weight: 600; }
+    .quick-tab-rate.bad  { color: var(--primary); }
+    .quick-tab-rate.ok   { color: var(--green); }
+    .quick-tab-rate.none { color: var(--gray); }
+    .week-confirm-badge {
+      font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px;
+      white-space: nowrap;
+    }
+    .week-confirm-badge.done { background: #EBF7EE; color: var(--green); }
+    .week-confirm-badge.pending { background: var(--gray-light); color: var(--gray); }
+  </style>
+  <style>
     .upload-compare-grid { display:grid; grid-template-columns:1fr 1fr; gap:0; }
     @media(max-width:700px){ .upload-compare-grid { grid-template-columns:1fr; } }
     .upload-compare-col { border-right:1px solid var(--border); }
@@ -142,6 +163,24 @@
           자동 분류·필터링 후<br>
           <strong>월간 파일에 삽입</strong>하세요.
         </p>
+      </div>
+    </section>
+
+    <!-- 현황 요약 -->
+    <section class="card" id="quickStatsCard">
+      <div class="card-header">
+        <span class="card-icon">&#128200;</span>
+        <h2 id="quickStatsTitle">현황 불러오는 중...</h2>
+        <a href="/analysis" class="btn btn-secondary btn-sm" style="margin-left:auto">&#128200; 전체 분석 보기</a>
+      </div>
+      <div class="card-body" style="padding:0">
+        <!-- 탭별 건수 카드 -->
+        <div id="quickTabCards" style="display:flex;flex-wrap:wrap;gap:0;border-bottom:1px solid var(--border)"></div>
+        <!-- 주차 확정 현황 -->
+        <div id="quickWeekRow" style="display:none;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 20px">
+          <span style="font-size:12px;font-weight:700;color:var(--gray-dark)">이번 달 주차 확정</span>
+          <div id="quickWeekBadges" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        </div>
       </div>
     </section>
 

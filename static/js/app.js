@@ -533,6 +533,80 @@ function renderUploadComparison(comments, weekComments) {
   _renderCommentList(document.getElementById('weekCommentList'), weekComments);
 }
 
+// ─── 현황 요약 (홈 빈 공간) ──────────────────────────
+async function loadQuickStats() {
+  try {
+    const [statsRes, cwRes] = await Promise.all([
+      fetch('/api/analysis-data'),
+      fetch('/api/confirmed-weeks'),
+    ]);
+    const statsData = await statsRes.json();
+    const cw = await cwRes.json();
+
+    if (!statsData.ok) return;
+
+    const allStats = statsData.all_stats || {};
+    const sortedKeys = Object.keys(allStats).sort();
+    if (!sortedKeys.length) return;
+
+    // 최신 확정 월 찾기
+    const confirmedKeys = sortedKeys.filter(k => allStats[k].confirmed);
+    const latestKey = confirmedKeys.length ? confirmedKeys[confirmedKeys.length - 1] : sortedKeys[sortedKeys.length - 1];
+    const latest = allStats[latestKey];
+
+    document.getElementById('quickStatsTitle').textContent =
+      `${latest.label} 확정 현황`;
+
+    // 탭별 카드
+    const TAB_CLS = t => t.startsWith('서울') ? 'seoul' : t.startsWith('공항') ? 'airport' : 'regional';
+    const tabCards = document.getElementById('quickTabCards');
+    tabCards.innerHTML = ['서울 B800','서울 B700','서울 B710','공항 B620',
+      '대전 B650','세종 B500','제주 B400','포항 B800',
+      '상주,영주,예천 B400','안동 B520D','김해 B600'].map(tab => {
+      const d = (latest.tabs || {})[tab] || {};
+      const cnt = d.count ?? '-';
+      const rate = d.fault_rate != null ? d.fault_rate : null;
+      const rateCls = rate == null ? 'none' : rate >= 1 ? 'bad' : 'ok';
+      const rateTxt = rate != null ? rate + '%' : '-';
+      return `<div class="quick-tab-card">
+        <div class="quick-tab-name">${tab}</div>
+        <div class="quick-tab-count">${cnt}</div>
+        <div class="quick-tab-rate ${rateCls}">장애율 ${rateTxt}</div>
+      </div>`;
+    }).join('');
+
+    // 이번 달 주차 확정 현황
+    // 현재 달 = 가장 최신 월간 파일 기준
+    const monthlyFiles = await (await fetch('/api/monthly-files')).json();
+    const latestFile = (monthlyFiles.files || []).filter(f => !f.confirmed).slice(-1)[0]
+      || (monthlyFiles.files || []).slice(-1)[0];
+    if (latestFile) {
+      const fn = latestFile.name;
+      const confirmed = cw[fn] || [];
+      // 주차 목록: 이미 확정된 것 + 예상 주차 (1~5주)
+      const monthMatch = fn.match(/(\d{1,2})월/);
+      const mn = monthMatch ? parseInt(monthMatch[1]) : null;
+      if (mn && confirmed.length > 0) {
+        const maxWeek = 5;
+        const badges = Array.from({length: maxWeek}, (_, i) => {
+          const label = `${mn}월${i+1}주`;
+          const done = confirmed.includes(label);
+          return `<span class="week-confirm-badge ${done ? 'done' : 'pending'}">${done ? '✓' : '·'} ${label}</span>`;
+        }).join('');
+        const weekRow = document.getElementById('quickWeekRow');
+        document.getElementById('quickWeekBadges').innerHTML = badges;
+        weekRow.style.display = 'flex';
+      }
+    }
+
+  } catch (e) {
+    document.getElementById('quickStatsTitle').textContent = '현황 불러오기 실패';
+  }
+}
+
+// 페이지 로드 시 현황 표시
+loadQuickStats();
+
 // ─── 월간 파일 섹션 ──────────────────────────────────
 let monthlyFilesInfo = [];
 
