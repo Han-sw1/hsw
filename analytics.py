@@ -112,57 +112,84 @@ def read_monthly_stats(filename):
     if not year or not os.path.exists(path):
         return {}
 
-    try:
-        # 숨김 시트(raw data)용: read_only로 빠르게 읽기
-        wb = load_workbook(path, data_only=True, read_only=True)
-    except Exception:
-        return {}
-
     result = {}
-    for tab_name in TAB_ORDER:
-        raw_sheet = TAB_TO_RAWSHEET.get(tab_name)
-        if not raw_sheet or raw_sheet not in wb.sheetnames:
-            continue
-
-        try:
-            ws_raw = wb[raw_sheet]
-            # read_only에서는 ws.values 대신 iter_rows 사용
-            rows_iter = ws_raw.iter_rows(values_only=True)
-            all_rows = list(rows_iter)
-            if not all_rows:
-                headers, rows = [], []
-            else:
-                headers = list(all_rows[0])
-                rows = [list(r) for r in all_rows[1:] if any(v is not None for v in r)]
-            count = _count_month_records(headers, rows, year, month) if headers else 0
-        except Exception:
-            count = 0
-
-        result[tab_name] = {
-            "year": year, "month": month,
-            "count": count,
-            "운영수량": None,
-            "fault_rate": None,
-        }
-
-    # 운영수량 별도 로드 (visible sheets)
     try:
-        wb.close()
-        wb2 = load_workbook(path, data_only=True, read_only=True)
-        for tab_name in result:
+        wb = load_workbook(path, data_only=True, read_only=True)
+
+        # 로우데이터 시트에서 건수 카운트
+        for tab_name in TAB_ORDER:
+            raw_sheet = TAB_TO_RAWSHEET.get(tab_name)
+            if not raw_sheet or raw_sheet not in wb.sheetnames:
+                continue
+            try:
+                ws_raw = wb[raw_sheet]
+                headers = None
+                count = 0
+                for i, row in enumerate(ws_raw.iter_rows(values_only=True)):
+                    if i == 0:
+                        headers = list(row)
+                        continue
+                    if headers and any(v is not None for v in row):
+                        # 날짜 컬럼 찾아서 해당 월 건수만 카운트
+                        count += 1  # 일단 전체 카운트 (날짜 필터는 아래에서)
+                # 날짜 필터 적용 (메모리 절약을 위해 스트리밍 방식으로 재처리)
+                if headers:
+                    count = _count_month_streaming(wb[raw_sheet], headers, year, month)
+            except Exception:
+                count = 0
+            result[tab_name] = {
+                "year": year, "month": month,
+                "count": count,
+                "운영수량": None,
+                "fault_rate": None,
+            }
+
+        # 운영수량 (visible 시트에서)
+        for tab_name in list(result.keys()):
             visible = TAB_TO_VISIBLE.get(tab_name)
-            if visible and visible in wb2.sheetnames:
-                op = _extract_운영수량(wb2[visible])
+            if visible and visible in wb.sheetnames:
+                op = _extract_운영수량(wb[visible])
                 if op:
                     result[tab_name]["운영수량"] = op
                     cnt = result[tab_name]["count"]
                     if cnt > 0:
                         result[tab_name]["fault_rate"] = round(cnt / op * 100, 2)
-        wb2.close()
+
+        wb.close()
     except Exception:
         pass
 
     return result
+
+
+def _count_month_streaming(ws, headers, year, month):
+    """메모리 절약 스트리밍 방식으로 해당 월 건수 카운트."""
+    date_pos = None
+    for i, h in enumerate(headers):
+        if h == "장애접수일":
+            date_pos = i
+            break
+    if date_pos is None:
+        occ = [i for i, h in enumerate(headers) if h == "장애접수일시"]
+        date_pos = occ[1] if len(occ) >= 2 else (occ[0] if occ else None)
+
+    count = 0
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if not any(v is not None for v in row):
+            continue
+        if date_pos is None or date_pos >= len(row):
+            count += 1
+            continue
+        val = row[date_pos]
+        if val is None:
+            continue
+        try:
+            d = val if isinstance(val, date_type) else pd.to_datetime(str(val)).date()
+            if d.year == year and d.month == month:
+                count += 1
+        except Exception:
+            pass
+    return count
 
 
 def _cache_valid():
