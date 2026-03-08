@@ -377,6 +377,29 @@ body {
   padding: 9px 14px; border-left: 4px solid #FFA500;
 }
 .monthly-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.week-action-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 14px; background: var(--gray-light);
+  border-radius: 8px; border: 1px solid var(--border);
+}
+.week-badge {
+  font-size: 12px; font-weight: 700; padding: 4px 12px;
+  border-radius: 20px; white-space: nowrap;
+}
+.week-badge-pending { background: #FFF3CD; color: #7A4800; }
+.week-badge-confirmed { background: #EBF7EE; color: var(--green); }
+.btn-lock {
+  background: var(--green); color: #fff; border: none;
+  padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: background 0.2s;
+}
+.btn-lock:hover { background: #155c2e; }
+.btn-danger {
+  background: #fff; color: var(--primary); border: 1.5px solid var(--primary);
+  padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: background 0.2s, color 0.2s;
+}
+.btn-danger:hover { background: var(--primary); color: #fff; }
 .report-title {
   font-size: 12px; font-weight: 700; color: var(--gray-dark);
   margin: 18px 0 8px; letter-spacing: 0.2px;

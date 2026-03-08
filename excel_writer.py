@@ -280,6 +280,41 @@ def insert_into_monthly(final_tabs, monthly_filename, mode="daily", week_label=N
     return report
 
 
+def delete_weekly(monthly_filename, week_label):
+    """지정 주차 데이터를 월간 파일 모든 시트에서 삭제."""
+    file_path = get_monthly_file_path(monthly_filename)
+    if not os.path.exists(file_path):
+        return {"error": f"파일 없음: {monthly_filename}"}
+
+    wb = load_workbook(file_path)
+    report = {}
+    changed = False
+
+    for tab_name, sheet_name in TAB_TO_RAWSHEET.items():
+        if sheet_name not in wb.sheetnames:
+            continue
+        ws = wb[sheet_name]
+        headers, rows = _read_sheet(ws)
+        if not headers:
+            continue
+        week_pos = _find_col_pos(headers, "주차")
+        if week_pos is None:
+            continue
+        before = len(rows)
+        kept = [r for r in rows if str(r[week_pos]) != str(week_label)]
+        deleted = before - len(kept)
+        if deleted > 0:
+            _clear_and_write(ws, headers, kept)
+            changed = True
+        report[tab_name] = {"sheet": sheet_name, "deleted": deleted, "remaining": len(kept)}
+
+    if changed:
+        wb.save(file_path)
+    del wb
+    gc.collect()
+    return report
+
+
 def _get_date_series(df):
     """날짜 컬럼을 date 객체 시리즈로 반환."""
     from datetime import date as date_type

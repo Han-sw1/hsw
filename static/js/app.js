@@ -373,8 +373,11 @@ function renderUploadComparison(comments, weekComments) {
 let monthlyFilesInfo = [];
 
 async function setupMonthlySection() {
-  const res = await fetch('/api/monthly-files');
-  const data = await res.json();
+  const [res1, _cw] = await Promise.all([
+    fetch('/api/monthly-files'),
+    loadConfirmedWeeks(),
+  ]);
+  const data = await res1.json();
   monthlyFilesInfo = data.files || [];
 
   const sel = document.getElementById('monthlyFileSelect');
@@ -408,6 +411,58 @@ async function setupMonthlySection() {
   onFileSelectChange();
 }
 
+// ─── 확정 주차 캐시 ─────────────────────────────────
+let confirmedWeeksCache = {};   // { filename: ["3월1주차", ...] }
+
+async function loadConfirmedWeeks() {
+  try {
+    const res = await fetch('/api/confirmed-weeks');
+    confirmedWeeksCache = await res.json();
+  } catch (_) {}
+}
+
+function isWeekConfirmed(filename, weekLabel) {
+  return (confirmedWeeksCache[filename] || []).includes(weekLabel);
+}
+
+function updateWeekActionUI() {
+  const filename = document.getElementById('monthlyFileSelect').value;
+  const weekLabel = document.getElementById('weekSelect').value;
+  const mode = document.getElementById('modeSelect').value;
+  const row = document.getElementById('weekActionRow');
+
+  if (mode !== 'weekly' || !weekLabel || !filename) {
+    row.style.display = 'none';
+    return;
+  }
+  row.style.display = 'flex';
+
+  const confirmed = isWeekConfirmed(filename, weekLabel);
+  const badge = document.getElementById('weekStatusBadge');
+  const btnConfirm = document.getElementById('btnConfirmWeek');
+  const btnUnconfirm = document.getElementById('btnUnconfirmWeek');
+  const btnDelete = document.getElementById('btnDeleteWeek');
+  const btnInsert = document.getElementById('btnInsert');
+
+  if (confirmed) {
+    badge.textContent = '🔒 확정됨';
+    badge.className = 'week-badge week-badge-confirmed';
+    btnConfirm.style.display = 'none';
+    btnUnconfirm.style.display = 'inline-flex';
+    btnDelete.style.display = 'none';
+    btnInsert.disabled = true;
+  } else {
+    badge.textContent = '🟡 미확정';
+    badge.className = 'week-badge week-badge-pending';
+    btnConfirm.style.display = 'inline-flex';
+    btnUnconfirm.style.display = 'none';
+    btnDelete.style.display = 'inline-flex';
+    // 파일 자체가 확정인지 다시 체크
+    const info = monthlyFilesInfo.find(f => f.name === filename);
+    btnInsert.disabled = info?.confirmed ?? false;
+  }
+}
+
 function onFileSelectChange() {
   const selVal = document.getElementById('monthlyFileSelect').value;
   const info = monthlyFilesInfo.find(f => f.name === selVal);
@@ -416,13 +471,104 @@ function onFileSelectChange() {
   const notice = document.getElementById('confirmedNotice');
   btn.disabled = isConfirmed;
   if (notice) notice.style.display = isConfirmed ? 'block' : 'none';
+  updateWeekActionUI();
 }
 
 function onModeChange() {
   const mode = document.getElementById('modeSelect').value;
   document.getElementById('weekGroup').style.display = mode === 'weekly' ? 'block' : 'none';
   document.getElementById('modeDesc').textContent = MODE_DESC[mode] || '';
+  updateWeekActionUI();
 }
+
+function onWeekSelectChange() {
+  updateWeekActionUI();
+}
+
+// ─── 주차 확정 버튼 ──────────────────────────────────
+document.getElementById('btnConfirmWeek').addEventListener('click', async () => {
+  const filename = document.getElementById('monthlyFileSelect').value;
+  const weekLabel = document.getElementById('weekSelect').value;
+  if (!filename || !weekLabel) return;
+  if (!confirm(`[${weekLabel}] 을 확정합니다.\n확정 후에는 삽입·삭제가 불가합니다. 계속하시겠습니까?`)) return;
+  try {
+    const res = await fetch('/api/confirm-week', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ monthly_filename: filename, week_label: weekLabel }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      confirmedWeeksCache[filename] = confirmedWeeksCache[filename] || [];
+      if (!confirmedWeeksCache[filename].includes(weekLabel)) confirmedWeeksCache[filename].push(weekLabel);
+      updateWeekActionUI();
+      showToast(`${weekLabel} 확정 완료`, 'success');
+    } else {
+      showToast(data.error || '오류', 'error');
+    }
+  } catch (e) {
+    showToast('서버 오류: ' + e.message, 'error');
+  }
+});
+
+// ─── 확정 취소 버튼 ──────────────────────────────────
+document.getElementById('btnUnconfirmWeek').addEventListener('click', async () => {
+  const filename = document.getElementById('monthlyFileSelect').value;
+  const weekLabel = document.getElementById('weekSelect').value;
+  if (!filename || !weekLabel) return;
+  if (!confirm(`[${weekLabel}] 확정을 취소합니다. 계속하시겠습니까?`)) return;
+  try {
+    const res = await fetch('/api/unconfirm-week', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ monthly_filename: filename, week_label: weekLabel }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const arr = confirmedWeeksCache[filename] || [];
+      const idx = arr.indexOf(weekLabel);
+      if (idx !== -1) arr.splice(idx, 1);
+      updateWeekActionUI();
+      showToast(`${weekLabel} 확정 취소됨`, 'success');
+    } else {
+      showToast(data.error || '오류', 'error');
+    }
+  } catch (e) {
+    showToast('서버 오류: ' + e.message, 'error');
+  }
+});
+
+// ─── 주차 데이터 삭제 버튼 ───────────────────────────
+document.getElementById('btnDeleteWeek').addEventListener('click', async () => {
+  const filename = document.getElementById('monthlyFileSelect').value;
+  const weekLabel = document.getElementById('weekSelect').value;
+  if (!filename || !weekLabel) return;
+  if (!confirm(`[${weekLabel}] 주차 데이터를 삭제합니다.\n이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?`)) return;
+  showLoading(true, '주차 데이터 삭제 중...');
+  try {
+    const res = await fetch('/api/delete-weekly', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ monthly_filename: filename, week_label: weekLabel }),
+    });
+    let data;
+    try { data = await res.json(); } catch (_) {
+      showToast('서버 오류: 응답을 받지 못했습니다.', 'error');
+      return;
+    }
+    if (data.ok) {
+      const total = Object.values(data.report).reduce((s, r) => s + (r.deleted || 0), 0);
+      showToast(`${weekLabel} 데이터 ${total}건 삭제 완료`, 'success');
+    } else {
+      showToast(data.error || '삭제 오류', 'error');
+    }
+  } catch (e) {
+    showToast('서버 오류: ' + e.message, 'error');
+  } finally {
+    showLoading(false);
+  }
+});
+
 // 초기 설명
 document.getElementById('modeDesc').textContent = MODE_DESC['daily'];
 

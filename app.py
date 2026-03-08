@@ -5,7 +5,7 @@ import json
 import pickle
 from datetime import datetime
 from processor import process_all_files, tabs_to_excel_bytes, build_preview
-from excel_writer import list_monthly_files, insert_into_monthly, compute_web_stats, get_monthly_file_path
+from excel_writer import list_monthly_files, insert_into_monthly, compute_web_stats, get_monthly_file_path, delete_weekly
 from analytics import (
     get_all_historical_stats, generate_comments, generate_upload_comparison,
     generate_week_comparison,
@@ -17,6 +17,7 @@ app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB
 
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 REFERENCE_DIR = os.path.join(os.path.dirname(__file__), "reference_files")
+CONFIRMED_WEEKS_FILE = os.path.join(os.path.dirname(__file__), "confirmed_weeks.json")
 
 DEFAULT_CONFIG = {
     "criteria_path": "",
@@ -34,6 +35,18 @@ def load_config():
 def save_config(cfg):
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
+
+
+def load_confirmed_weeks():
+    if os.path.exists(CONFIRMED_WEEKS_FILE):
+        with open(CONFIRMED_WEEKS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def save_confirmed_weeks(data):
+    with open(CONFIRMED_WEEKS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 def get_reference_paths():
@@ -270,6 +283,12 @@ def insert_monthly():
     if _is_confirmed(monthly_filename):
         return jsonify({"error": f"확정 완료된 파일입니다. 삽입이 불가합니다.\n({monthly_filename})"}), 403
 
+    # 주차 확정 여부 체크
+    if mode == "weekly" and week_label:
+        cw = load_confirmed_weeks()
+        if week_label in cw.get(monthly_filename, []):
+            return jsonify({"error": f"'{week_label}'은 확정된 주차입니다. 삽입이 불가합니다."}), 403
+
     result_dir = os.path.join(os.path.dirname(__file__), "results")
     pkl_path = os.path.join(result_dir, result_key + ".pkl")
 
@@ -294,6 +313,60 @@ def insert_monthly():
 
         return jsonify({"ok": True, "report": report, "filename": monthly_filename})
 
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "detail": traceback.format_exc()}), 500
+
+
+@app.route("/api/confirmed-weeks")
+def get_confirmed_weeks():
+    return jsonify(load_confirmed_weeks())
+
+
+@app.route("/api/confirm-week", methods=["POST"])
+def confirm_week():
+    data = request.json
+    filename = data.get("monthly_filename")
+    week = data.get("week_label")
+    if not filename or not week:
+        return jsonify({"error": "파라미터 누락"}), 400
+    cw = load_confirmed_weeks()
+    cw.setdefault(filename, [])
+    if week not in cw[filename]:
+        cw[filename].append(week)
+    save_confirmed_weeks(cw)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/unconfirm-week", methods=["POST"])
+def unconfirm_week():
+    data = request.json
+    filename = data.get("monthly_filename")
+    week = data.get("week_label")
+    if not filename or not week:
+        return jsonify({"error": "파라미터 누락"}), 400
+    cw = load_confirmed_weeks()
+    if filename in cw and week in cw[filename]:
+        cw[filename].remove(week)
+    save_confirmed_weeks(cw)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/delete-weekly", methods=["POST"])
+def delete_weekly_route():
+    data = request.json
+    filename = data.get("monthly_filename")
+    week = data.get("week_label")
+    if not filename or not week:
+        return jsonify({"error": "파라미터 누락"}), 400
+    cw = load_confirmed_weeks()
+    if week in cw.get(filename, []):
+        return jsonify({"error": f"'{week}'은 확정된 주차입니다. 삭제하려면 먼저 확정을 취소하세요."}), 403
+    try:
+        report = delete_weekly(filename, week)
+        if "error" in report:
+            return jsonify({"error": report["error"]}), 400
+        return jsonify({"ok": True, "report": report})
     except Exception as e:
         import traceback
         return jsonify({"error": str(e), "detail": traceback.format_exc()}), 500
