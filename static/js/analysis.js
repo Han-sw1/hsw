@@ -201,55 +201,88 @@ function renderCompare() {
   const statB = allData.all_stats[sortedKeys[idxB]];
   if (!statA || !statB) return;
 
-  function box(stat, label) {
-    const rows = TAB_ORDER.map(tab => {
-      const d = (stat.tabs || {})[tab] || {};
-      const cnt = d.count || 0;
-      if (cnt === 0) return '';
-      const rate = d.fault_rate != null ? `<span style="font-size:11px;color:var(--gray);margin-left:5px">${d.fault_rate}%</span>` : '';
-      return `<div class="compare-row">
-        <span class="compare-tab">${tab}</span>
-        <span><b>${cnt}</b>건${rate}</span>
-      </div>`;
-    }).join('');
-    const total = Object.values(stat.tabs || {}).reduce((s, d) => s + (d.count || 0), 0);
-    return `<div class="compare-box">
-      <div style="font-size:13px;font-weight:800;margin-bottom:10px">${label}</div>
-      ${rows || '<p style="color:var(--gray);font-size:12px">데이터 없음</p>'}
-      <div class="compare-row" style="margin-top:8px;border-top:2px solid var(--border)">
-        <b>합계</b><b>${total}건</b>
-      </div>
-    </div>`;
+  // 최대 건수 → 변화량 바 길이 계산용
+  const maxCount = Math.max(
+    ...TAB_ORDER.map(t => Math.max(
+      (statA.tabs[t] || {}).count || 0,
+      (statB.tabs[t] || {}).count || 0
+    )), 1
+  );
+
+  function cellA(tab) {
+    const d = (statA.tabs || {})[tab] || {};
+    const cnt = d.count || 0;
+    const rate = d.fault_rate;
+    const rateCls = rate == null ? '' : rate >= 1 ? 'bad' : 'ok';
+    const rateTxt = rate != null ? `${rate}%` : '-';
+    return `<td>
+      <span class="cmp-count">${cnt}건</span>
+      <span class="cmp-rate ${rateCls}">장애율 ${rateTxt}</span>
+    </td>`;
   }
 
-  function diffBox(sA, sB) {
-    const rows = TAB_ORDER.map(tab => {
-      const cA = (sA.tabs[tab] || {}).count || 0;
-      const cB = (sB.tabs[tab] || {}).count || 0;
-      if (cA === 0 && cB === 0) return '';
-      const diff = cB - cA;
-      const cls = diff > 0 ? 'diff-up' : diff < 0 ? 'diff-down' : 'diff-same';
-      const arrow = diff > 0 ? '▲' : diff < 0 ? '▼' : '→';
-      return `<div class="compare-row">
-        <span class="compare-tab">${tab}</span>
-        <span class="${cls}">${arrow}${Math.abs(diff)}건<span style="font-size:10px;color:var(--gray);margin-left:4px">(${cA}→${cB})</span></span>
-      </div>`;
-    }).join('');
-    const tA = Object.values(sA.tabs).reduce((s, d) => s + (d.count || 0), 0);
-    const tB = Object.values(sB.tabs).reduce((s, d) => s + (d.count || 0), 0);
-    const td = tB - tA;
-    const tcls = td > 0 ? 'diff-up' : td < 0 ? 'diff-down' : 'diff-same';
-    return `<div class="compare-box">
-      <div style="font-size:13px;font-weight:800;margin-bottom:10px">변화량 (${sA.month}월→${sB.month}월)</div>
-      ${rows || ''}
-      <div class="compare-row" style="margin-top:8px;border-top:2px solid var(--border)">
-        <b>합계</b><span class="${tcls}">${td > 0 ? '▲' : td < 0 ? '▼' : '→'}${Math.abs(td)}건</span>
-      </div>
-    </div>`;
+  function cellB(tab) {
+    const d = (statB.tabs || {})[tab] || {};
+    const cnt = d.count || 0;
+    const rate = d.fault_rate;
+    const rateCls = rate == null ? '' : rate >= 1 ? 'bad' : 'ok';
+    const rateTxt = rate != null ? `${rate}%` : '-';
+    return `<td>
+      <span class="cmp-count">${cnt}건</span>
+      <span class="cmp-rate ${rateCls}">장애율 ${rateTxt}</span>
+    </td>`;
   }
 
-  document.getElementById('compareGrid').innerHTML =
-    box(statA, statA.label) + diffBox(statA, statB) + box(statB, statB.label);
+  function cellDiff(tab) {
+    const cA = (statA.tabs[tab] || {}).count || 0;
+    const cB = (statB.tabs[tab] || {}).count || 0;
+    const diff = cB - cA;
+    const cls = diff > 0 ? 'diff-up' : diff < 0 ? 'diff-down' : 'diff-same';
+    const arrow = diff > 0 ? '▲' : diff < 0 ? '▼' : '→';
+    const barW = Math.round(Math.abs(diff) / maxCount * 60);
+    const barColor = diff > 0 ? 'var(--primary)' : diff < 0 ? 'var(--green)' : 'var(--gray)';
+    const barHtml = diff !== 0 ? `<span class="cmp-bar" style="width:${barW}px;background:${barColor}"></span>` : '';
+    const pct = cA > 0 ? ` (${diff > 0 ? '+' : ''}${Math.round(diff / cA * 100)}%)` : '';
+    return `<td>
+      <span class="cmp-diff ${cls}">${arrow} ${Math.abs(diff)}건${pct}</span>${barHtml}
+    </td>`;
+  }
+
+  const tA = Object.values(statA.tabs).reduce((s, d) => s + (d.count || 0), 0);
+  const tB = Object.values(statB.tabs).reduce((s, d) => s + (d.count || 0), 0);
+  const tDiff = tB - tA;
+  const tCls = tDiff > 0 ? 'diff-up' : tDiff < 0 ? 'diff-down' : 'diff-same';
+  const tArrow = tDiff > 0 ? '▲' : tDiff < 0 ? '▼' : '→';
+  const tPct = tA > 0 ? ` (${tDiff > 0 ? '+' : ''}${Math.round(tDiff / tA * 100)}%)` : '';
+
+  const rows = TAB_ORDER.map(tab => {
+    const cA = (statA.tabs[tab] || {}).count || 0;
+    const cB = (statB.tabs[tab] || {}).count || 0;
+    if (cA === 0 && cB === 0) return '';
+    return `<tr>
+      <td><span class="tab-label-analysis ${getTabClass(tab)}">${tab}</span></td>
+      ${cellA(tab)}${cellB(tab)}${cellDiff(tab)}
+    </tr>`;
+  }).join('');
+
+  document.getElementById('compareGrid').innerHTML = `
+    <thead>
+      <tr>
+        <th>단말기</th>
+        <th>${statA.label}</th>
+        <th>${statB.label}</th>
+        <th>변화량</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows}
+      <tr>
+        <td>합계</td>
+        <td><span class="cmp-count">${tA}건</span></td>
+        <td><span class="cmp-count">${tB}건</span></td>
+        <td><span class="cmp-diff ${tCls}">${tArrow} ${Math.abs(tDiff)}건${tPct}</span></td>
+      </tr>
+    </tbody>`;
 }
 
 // ─── 코멘트 ──────────────────────────────────────────
