@@ -189,7 +189,7 @@ document.getElementById('btnProcess').addEventListener('click', async () => {
     renderSummary(data.summary || {});
     renderTabButtons();
     renderStats(statsData);
-    renderUploadComparison(data.upload_comments || []);
+    renderUploadComparison(data.upload_comments || [], data.week_comments || []);
     setupMonthlySection();
 
     document.getElementById('resultCard').style.display = 'block';
@@ -338,15 +338,12 @@ const CLBL_MAP = {
   alert:'경보⚠', rate_info:'장애율',
 };
 
-function renderUploadComparison(comments) {
-  const card = document.getElementById('uploadCompareCard');
-  const list = document.getElementById('uploadCommentList');
+function _renderCommentList(listEl, comments) {
   if (!comments || !comments.length) {
-    card.style.display = 'none';
+    listEl.innerHTML = '<li class="comment-item"><span class="comment-text" style="color:var(--gray)">데이터 없음</span></li>';
     return;
   }
-  card.style.display = 'block';
-  list.innerHTML = comments.map(c => {
+  listEl.innerHTML = comments.map(c => {
     const cls = CSTYLE_MAP[c.type] || 'info';
     const lbl = CLBL_MAP[c.type] || (c.tag || '');
     if (c.type === 'divider') {
@@ -357,6 +354,19 @@ function renderUploadComparison(comments) {
       <span class="comment-text">${c.text}</span>
     </li>`;
   }).join('');
+}
+
+function renderUploadComparison(comments, weekComments) {
+  const card = document.getElementById('uploadCompareCard');
+  const hasMonth = comments && comments.length > 0;
+  const hasWeek  = weekComments && weekComments.length > 0;
+  if (!hasMonth && !hasWeek) {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = 'block';
+  _renderCommentList(document.getElementById('uploadCommentList'), comments);
+  _renderCommentList(document.getElementById('weekCommentList'), weekComments);
 }
 
 // ─── 월간 파일 섹션 ──────────────────────────────────

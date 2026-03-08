@@ -8,6 +8,7 @@ from processor import process_all_files, tabs_to_excel_bytes, build_preview
 from excel_writer import list_monthly_files, insert_into_monthly, compute_web_stats, get_monthly_file_path
 from analytics import (
     get_all_historical_stats, generate_comments, generate_upload_comparison,
+    generate_week_comparison,
     read_운영수량_only, TAB_ORDER as ANALYTICS_TAB_ORDER, _parse_ym,
 )
 
@@ -219,11 +220,13 @@ def process():
         except Exception:
             pass
 
-        # 신규 업로드 vs 직전 확정 월 비교 코멘트 (비확정 데이터가 있는 경우만)
+        # 신규 업로드 vs 직전 확정 월/주차 비교 코멘트
         upload_comments = []
+        week_comments = []
         try:
             hist = get_all_historical_stats()
             upload_comments = generate_upload_comparison(stats, hist)
+            week_comments = generate_week_comparison(stats, hist)
         except Exception:
             pass
 
@@ -235,6 +238,7 @@ def process():
             "stats": stats,
             "weeks": sorted(all_weeks),
             "upload_comments": upload_comments,
+            "week_comments": week_comments,
             "file_types": {
                 os.path.basename(p): m.get("type", "unknown")
                 for p, m in zip(tmp_paths, meta.values())

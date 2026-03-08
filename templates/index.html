@@ -8,6 +8,12 @@
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
   <style>
+    .upload-compare-grid { display:grid; grid-template-columns:1fr 1fr; gap:0; }
+    @media(max-width:700px){ .upload-compare-grid { grid-template-columns:1fr; } }
+    .upload-compare-col { border-right:1px solid var(--border); }
+    .upload-compare-col:last-child { border-right:none; }
+    .upload-compare-title { font-size:12px; font-weight:700; color:var(--gray-dark);
+      padding:10px 20px; background:var(--gray-light); border-bottom:1px solid var(--border); }
     .ref-upload-row { display:flex; align-items:center; gap:10px; margin-top:6px; }
     .ref-status { font-size:12px; color:var(--gray-dark); flex:1;
       background:var(--gray-light); border-radius:5px; padding:6px 10px; }
@@ -195,10 +201,17 @@
     <section class="card" id="uploadCompareCard" style="display:none">
       <div class="card-header">
         <span class="card-icon">&#128202;</span>
-        <h2>신규 업로드 데이터 비교 <span class="sub-title">— 직전 확정 월 대비</span></h2>
+        <h2>신규 업로드 데이터 비교</h2>
       </div>
-      <div class="card-body" style="padding:0">
-        <ul class="comment-list" id="uploadCommentList"></ul>
+      <div class="upload-compare-grid">
+        <div class="upload-compare-col">
+          <div class="upload-compare-title">&#128197; 직전 확정 월 대비</div>
+          <ul class="comment-list" id="uploadCommentList"></ul>
+        </div>
+        <div class="upload-compare-col">
+          <div class="upload-compare-title">&#128336; 직전 주차 대비</div>
+          <ul class="comment-list" id="weekCommentList"></ul>
+        </div>
       </div>
     </section>
 

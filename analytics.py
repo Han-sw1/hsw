@@ -116,45 +116,54 @@ def read_monthly_stats(filename):
     try:
         wb = load_workbook(path, data_only=True, read_only=True)
 
-        # 로우데이터 시트에서 건수 카운트 (단일 패스 — read_only 재이터레이션 불가)
+        # 로우데이터 시트에서 건수 카운트 + 주차별 건수 (단일 패스)
         for tab_name in TAB_ORDER:
             raw_sheet = TAB_TO_RAWSHEET.get(tab_name)
             if not raw_sheet or raw_sheet not in wb.sheetnames:
                 continue
             count = 0
+            by_week = {}
             try:
                 date_pos = None
+                week_pos = None
                 for i, row in enumerate(wb[raw_sheet].iter_rows(values_only=True)):
                     if i == 0:
                         headers = list(row)
                         for j, h in enumerate(headers):
                             if h == "장애접수일":
                                 date_pos = j
-                                break
+                            if h == "주차":
+                                week_pos = j
                         if date_pos is None:
                             occ = [j for j, h in enumerate(headers) if h == "장애접수일시"]
                             date_pos = occ[1] if len(occ) >= 2 else (occ[0] if occ else None)
                         continue
                     if not any(v is not None for v in row):
                         continue
+                    # 월 건수
                     if date_pos is None or date_pos >= len(row):
                         count += 1
-                        continue
-                    val = row[date_pos]
-                    if val is None:
-                        continue
-                    try:
-                        d = val if isinstance(val, date_type) else pd.to_datetime(str(val)).date()
-                        if d.year == year and d.month == month:
-                            count += 1
-                    except Exception:
-                        pass
+                    else:
+                        val = row[date_pos]
+                        if val is not None:
+                            try:
+                                d = val if isinstance(val, date_type) else pd.to_datetime(str(val)).date()
+                                if d.year == year and d.month == month:
+                                    count += 1
+                            except Exception:
+                                pass
+                    # 주차별 건수
+                    if week_pos is not None and week_pos < len(row) and row[week_pos]:
+                        wk = str(row[week_pos])
+                        by_week[wk] = by_week.get(wk, 0) + 1
             except Exception:
                 count = 0
+                by_week = {}
 
             result[tab_name] = {
                 "year": year, "month": month,
                 "count": count,
+                "by_week": by_week,
                 "운영수량": None,
                 "fault_rate": None,
             }
@@ -487,6 +496,108 @@ def generate_upload_comparison(new_stats, all_stats):
         comments.append({
             "type": ctype, "tag": tab,
             "text": f"{tab}: {pm_label} {_fmt(prv_cnt)}건 → {new_month_label} {_fmt(new_cnt)}건 — {trend}",
+        })
+
+    return comments
+
+
+def generate_week_comparison(new_stats, all_stats):
+    """신규 업로드 주차 데이터를 직전 주차와 비교하는 코멘트 생성.
+    예: 3월1주 업로드 → 2월 마지막 주차와 비교
+    """
+    if not new_stats or not all_stats:
+        return []
+
+    # 신규 데이터에서 주차 목록 수집
+    all_new_weeks = {}
+    for tab, td in new_stats.items():
+        for wk, cnt in (td.get("by_week") or {}).items():
+            all_new_weeks[wk] = all_new_weeks.get(wk, 0) + cnt
+
+    if not all_new_weeks:
+        return []
+
+    # 대표 주차: 가장 건수 많은 주차
+    cur_week = max(all_new_weeks, key=lambda w: all_new_weeks[w])
+
+    # 이전 주차 결정
+    import re
+    m = re.match(r'(\d+)월(\d+)주', cur_week)
+    if not m:
+        return []
+    cur_mn, cur_wn = int(m.group(1)), int(m.group(2))
+
+    sorted_keys = sorted(all_stats.keys())
+    if cur_wn > 1:
+        # 같은 달 직전 주차
+        prev_week = f"{cur_mn}월{cur_wn - 1}주"
+        # 해당 월 key 찾기
+        prev_key = next((k for k in reversed(sorted_keys)
+                         if all_stats[k]["month"] == cur_mn), None)
+    else:
+        # 직전 달 마지막 주차
+        prev_mn = 12 if cur_mn == 1 else cur_mn - 1
+        prev_key = next((k for k in reversed(sorted_keys)
+                         if all_stats[k]["month"] == prev_mn), None)
+        if not prev_key:
+            return []
+        # 직전 달의 가장 높은 주차 번호 찾기
+        all_weeks_prev = set()
+        for tab_data in all_stats[prev_key]["tabs"].values():
+            for wk in (tab_data.get("by_week") or {}).keys():
+                all_weeks_prev.add(wk)
+        if not all_weeks_prev:
+            return []
+        # 주차 번호 기준 최대값
+        def week_num(w):
+            mm = re.match(r'\d+월(\d+)주', w)
+            return int(mm.group(1)) if mm else 0
+        prev_week = max(all_weeks_prev, key=week_num)
+
+    if not prev_key:
+        return []
+
+    prev_data = all_stats[prev_key]["tabs"]
+    comments = []
+
+    # 전체 합계
+    total_new = sum(
+        (new_stats.get(tab) or {}).get("by_week", {}).get(cur_week, 0)
+        for tab in TAB_ORDER
+    )
+    total_prv = sum(
+        (prev_data.get(tab) or {}).get("by_week", {}).get(prev_week, 0)
+        for tab in TAB_ORDER
+    )
+    diff = total_new - total_prv
+    pct = _pct_txt(diff, total_prv)
+    ctype = "summary_bad" if diff > 0 else ("summary_good" if diff < 0 else "summary_same")
+    arrow = "▲" if diff > 0 else ("▼" if diff < 0 else "→")
+    comments.append({
+        "type": ctype, "tag": "전체",
+        "text": f"전체: {prev_week} {_fmt(total_prv)}건 → {cur_week} {_fmt(total_new)}건 ({arrow}{_fmt(abs(diff))}건{pct})",
+    })
+
+    for tab in TAB_ORDER:
+        new_cnt = (new_stats.get(tab) or {}).get("by_week", {}).get(cur_week, 0)
+        prv_cnt = (prev_data.get(tab) or {}).get("by_week", {}).get(prev_week, 0)
+        if new_cnt == 0 and prv_cnt == 0:
+            continue
+
+        diff = new_cnt - prv_cnt
+        pct = _pct_txt(diff, prv_cnt)
+        mag = _magnitude(diff, prv_cnt)
+        ctype = "new_bad" if diff > 0 else ("new_good" if diff < 0 else "new_same")
+        if diff > 0:
+            trend = f"{mag}{_fmt(abs(diff))}건{pct} 증가"
+        elif diff < 0:
+            trend = f"{mag}{_fmt(abs(diff))}건{pct} 감소"
+        else:
+            trend = "동일"
+
+        comments.append({
+            "type": ctype, "tag": tab,
+            "text": f"{tab}: {prev_week} {_fmt(prv_cnt)}건 → {cur_week} {_fmt(new_cnt)}건 — {trend}",
         })
 
     return comments
