@@ -10,6 +10,170 @@ const TAB_ORDER = [
   "상주,영주,예천 B400", "안동 B520D", "김해 B600"
 ];
 
+// 탭명 → 월간 파일 숨김 시트명 매핑
+const TAB_TO_RAWSHEET = {
+  "서울 B710":           "B710 로우데이터",
+  "서울 B800":           "B800로우데이터",
+  "서울 B700":           "B700로우데이터",
+  "공항 B620":           "공항 B620로우데이터",
+  "대전 B650":           "대전 B650 로우데이터",
+  "세종 B500":           "세종B500로우데이터",
+  "제주 B400":           "제주 B400 로우데이터",
+  "포항 B800":           "포항B800로우데이터",
+  "상주,영주,예천 B400": "상주.영주.예천 로우데이터",
+  "안동 B520D":          "안동B520D 로우데이터",
+  "김해 B600":           "김해B600 로우데이터",
+};
+
+// ─── SheetJS 기반 클라이언트 사이드 삽입 헬퍼 ───────
+function _jsColMap(sheetHeaders, procCols) {
+  const nameToPos = {};
+  sheetHeaders.forEach((h, i) => {
+    if (h == null) return;
+    const s = String(h).trim();
+    if (!nameToPos[s]) nameToPos[s] = [];
+    nameToPos[s].push(i);
+  });
+  const colMap = {};
+  const used = new Set();
+  for (const col of procCols) {
+    const cs = String(col).trim();
+    if (cs === '날짜') {
+      const avail = (nameToPos['장애접수일시'] || []).filter(p => !used.has(p));
+      if (avail.length >= 2) { colMap[col] = avail[1]; used.add(avail[1]); }
+      else if (avail.length === 1) { colMap[col] = avail[0]; used.add(avail[0]); }
+    } else if (cs === 'cits') {
+      for (const cn of ['CITS 설치일', 'CITS설치일']) {
+        const avail = (nameToPos[cn] || []).filter(p => !used.has(p));
+        if (avail.length > 0) { colMap[col] = avail[0]; used.add(avail[0]); break; }
+      }
+    } else {
+      const avail = (nameToPos[cs] || []).filter(p => !used.has(p));
+      if (avail.length > 0) { colMap[col] = avail[0]; used.add(avail[0]); }
+    }
+  }
+  return colMap;
+}
+
+function _jsFindColPos(headers, names) {
+  for (const name of names) {
+    const idx = headers.findIndex(h => h != null && String(h).trim() === name);
+    if (idx >= 0) return idx;
+  }
+  return null;
+}
+
+function _jsFindDatePos(headers) {
+  const pos = _jsFindColPos(headers, ['장애접수일']);
+  if (pos != null) return pos;
+  const occ = headers.reduce((a, h, i) => { if (String(h || '') === '장애접수일시') a.push(i); return a; }, []);
+  return occ.length >= 2 ? occ[1] : null;
+}
+
+async function _doClientInsert(monthlyFilename, mode, weekLabel) {
+  // 1. 처리된 탭 데이터 JSON 수신
+  const dataRes = await fetch(`/api/result-data/${encodeURIComponent(resultFilename)}`);
+  if (!dataRes.ok) {
+    const err = await dataRes.json().catch(() => ({}));
+    throw new Error(err.error || '처리된 데이터를 불러올 수 없습니다. 다시 처리를 실행해주세요.');
+  }
+  const { tabs: tabsData } = await dataRes.json();
+
+  // 2. 월간 xlsx 파일 ArrayBuffer 수신
+  const xlsxRes = await fetch(`/api/download-monthly/${encodeURIComponent(monthlyFilename)}`);
+  if (!xlsxRes.ok) throw new Error('월간 파일을 불러올 수 없습니다.');
+  const arrayBuffer = await xlsxRes.arrayBuffer();
+
+  // 3. SheetJS로 워크북 읽기
+  const wb = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array', cellDates: true });
+  const report = {};
+
+  for (const [tabName, tabData] of Object.entries(tabsData)) {
+    const sheetName = TAB_TO_RAWSHEET[tabName];
+    if (!sheetName || !wb.SheetNames.includes(sheetName)) {
+      report[tabName] = { skipped: true, reason: '시트 없음' };
+      continue;
+    }
+
+    const ws = wb.Sheets[sheetName];
+    const wsArray = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+    let sheetHeaders = wsArray.length > 0 ? wsArray[0].map(h => h != null ? String(h) : null) : [];
+    let existingRows = wsArray.length > 1 ? wsArray.slice(1).filter(r => r.some(v => v != null)) : [];
+
+    if (!sheetHeaders.length) {
+      sheetHeaders = tabData.columns;
+      existingRows = [];
+    }
+
+    const numCols = sheetHeaders.length;
+    const colMap = _jsColMap(sheetHeaders, tabData.columns);
+
+    // 새 행을 시트 컬럼 순서에 맞게 변환
+    const newRows = tabData.rows.map(row =>  {
+      const r = new Array(numCols).fill(null);
+      tabData.columns.forEach((col, ci) => {
+        const pos = colMap[col];
+        if (pos != null && pos < numCols) r[pos] = row[ci] ?? null;
+      });
+      return r;
+    });
+
+    const idPos   = _jsFindColPos(sheetHeaders, ['접수번호', 'No']);
+    const weekPos = _jsFindColPos(sheetHeaders, ['주차']);
+    const datePos = _jsFindDatePos(sheetHeaders);
+    const before  = existingRows.length;
+
+    let merged;
+    if (mode === 'monthly') {
+      merged = newRows;
+    } else if (mode === 'weekly' && weekLabel) {
+      const keep = weekPos != null
+        ? existingRows.filter(r => String(r[weekPos] ?? '') !== String(weekLabel))
+        : existingRows;
+      merged = [...keep, ...newRows];
+    } else {
+      if (idPos != null) {
+        const existingIds = new Set(existingRows.map(r => String(r[idPos] ?? '')));
+        const toAdd = newRows.filter(r => !existingIds.has(String(r[idPos] ?? '')));
+        merged = [...existingRows, ...toAdd];
+      } else {
+        merged = [...existingRows, ...newRows];
+      }
+    }
+
+    // 날짜 기준 정렬
+    if (datePos != null && merged.length > 0) {
+      merged.sort((a, b) => {
+        const da = a[datePos] != null ? String(a[datePos]) : '\uFFFF';
+        const db = b[datePos] != null ? String(b[datePos]) : '\uFFFF';
+        return da < db ? -1 : da > db ? 1 : 0;
+      });
+    }
+
+    // 시트 업데이트
+    const newWs = XLSX.utils.aoa_to_sheet([sheetHeaders, ...merged]);
+    if (ws['!cols']) newWs['!cols'] = ws['!cols'];
+    wb.Sheets[sheetName] = newWs;
+
+    report[tabName] = {
+      sheet: sheetName,
+      before,
+      added: merged.length - before,
+      total: merged.length,
+    };
+  }
+
+  // 4. 수정된 xlsx 다운로드
+  const wbOut = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([wbOut], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = monthlyFilename; a.click();
+  URL.revokeObjectURL(url);
+
+  return report;
+}
+
 const MODE_DESC = {
   daily:   "새로운 장애 데이터를 추가합니다. 이미 있는 접수번호는 중복 추가하지 않습니다.",
   weekly:  "선택한 주차의 기존 데이터를 삭제하고 새 데이터로 교체합니다. (목요일 주차 마감용)",
@@ -613,45 +777,24 @@ document.getElementById('btnInsert').addEventListener('click', async () => {
     if (!confirm(`[주차 확정] ${monthlyFilename}의 "${weekLabel}" 데이터를 교체합니다.\n계속하시겠습니까?`)) return;
   }
 
-  showLoading(true, `${modeLabel} 중...`);
+  showLoading(true, `${modeLabel} 중... (파일을 처리합니다)`);
 
   try {
-    const res = await fetch('/api/insert-monthly', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        result_key: resultFilename,
-        monthly_filename: monthlyFilename,
-        mode,
-        week_label: weekLabel,
-      }),
-    });
-    let data;
-    try {
-      data = await res.json();
-    } catch (_) {
-      showToast('서버 메모리 부족으로 처리 실패. 잠시 후 다시 시도하거나 로컬에서 실행하세요.', 'error');
-      return;
-    }
+    // 브라우저에서 직접 Excel 병합 후 다운로드 (서버 메모리 사용 없음)
+    const report = await _doClientInsert(monthlyFilename, mode, weekLabel);
 
-    if (!data.ok) {
-      showToast(data.error || '삽입 오류', 'error');
-      return;
-    }
-
-    renderInsertReport(data.report || {});
+    renderInsertReport(report);
     document.getElementById('insertReport').style.display = 'block';
-    document.getElementById('btnDownloadMonthly').style.display = 'inline-flex';
-    document.getElementById('btnDownloadMonthly').dataset.filename = monthlyFilename;
+    document.getElementById('btnDownloadMonthly').style.display = 'none'; // 이미 다운로드됨
 
-    const totalAdded = Object.values(data.report)
+    const totalAdded = Object.values(report)
       .filter(r => !r.skipped)
       .reduce((s, r) => s + (r.added || 0), 0);
-    showToast(`삽입 완료! ${totalAdded}건 추가`, 'success');
+    showToast(`삽입 완료! ${totalAdded}건 추가 — 파일이 다운로드되었습니다.`, 'success');
     document.getElementById('insertReport').scrollIntoView({ behavior: 'smooth' });
 
   } catch (e) {
-    showToast('서버 오류: ' + e.message, 'error');
+    showToast('오류: ' + e.message, 'error');
   } finally {
     showLoading(false);
   }

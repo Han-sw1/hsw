@@ -318,6 +318,46 @@ def insert_monthly():
         return jsonify({"error": str(e), "detail": traceback.format_exc()}), 500
 
 
+@app.route("/api/result-data/<result_key>")
+def get_result_data(result_key):
+    """처리된 탭 데이터를 JSON으로 반환 (클라이언트 사이드 삽입용)."""
+    import gc
+    result_dir = os.path.join(os.path.dirname(__file__), "results")
+    pkl_path = os.path.join(result_dir, result_key + ".pkl")
+    if not os.path.exists(pkl_path):
+        return jsonify({"error": "처리된 데이터가 없습니다. 다시 처리를 실행해주세요."}), 404
+    try:
+        with open(pkl_path, "rb") as f:
+            final_tabs = pickle.load(f)
+        tabs_json = {}
+        for tab_name, df in final_tabs.items():
+            if df is None or df.empty:
+                continue
+            columns = list(df.columns)
+            rows = []
+            for vals in df.itertuples(index=False, name=None):
+                r = []
+                for v in vals:
+                    if v is None:
+                        r.append(None)
+                    elif isinstance(v, float) and v != v:
+                        r.append(None)
+                    elif hasattr(v, "strftime"):
+                        r.append(v.strftime("%Y-%m-%d"))
+                    elif isinstance(v, (int, float, str, bool)):
+                        r.append(v)
+                    else:
+                        r.append(str(v))
+                rows.append(r)
+            tabs_json[tab_name] = {"columns": columns, "rows": rows}
+        del final_tabs
+        gc.collect()
+        return jsonify({"ok": True, "tabs": tabs_json})
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "detail": traceback.format_exc()}), 500
+
+
 @app.route("/api/confirmed-weeks")
 def get_confirmed_weeks():
     return jsonify(load_confirmed_weeks())
