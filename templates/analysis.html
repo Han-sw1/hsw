@@ -106,9 +106,9 @@
       background:var(--brand-gray); color:#fff; padding:11px 16px;
       font-weight:700; white-space:nowrap; text-align:center;
     }
-    .compare-table th:first-child { text-align:left; }
+    .compare-table th:first-child { text-align:center; }
     .compare-table td { padding:10px 16px; border-bottom:1px solid var(--border); text-align:center; vertical-align:middle; }
-    .compare-table td:first-child { text-align:left; }
+    .compare-table td:first-child { text-align:center; }
     .compare-table tr:last-child td { border-bottom:none; font-weight:800; background:var(--gray-light); }
     .compare-table tr:hover:not(:last-child) td { background:#FAFBFF; }
     .cmp-count { font-weight:800; font-size:15px; }
@@ -175,6 +175,17 @@
           <div class="chart-canvas-wrap"><canvas id="rateChart"></canvas></div>
         </div>
 
+        <!-- 전체 통계 테이블 -->
+        <div class="chart-box full-width">
+          <div class="chart-title">전체 월별 통계 테이블</div>
+          <div style="overflow-x:auto">
+            <table class="stats-month-table" id="statsTable">
+              <thead id="statsHead"></thead>
+              <tbody id="statsBody"></tbody>
+            </table>
+          </div>
+        </div>
+
         <!-- 월별 상세 비교 -->
         <div class="chart-box full-width">
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
@@ -198,17 +209,6 @@
             </div>
           </div>
           <ul class="comment-list" id="commentList"></ul>
-        </div>
-
-        <!-- 전체 통계 테이블 -->
-        <div class="chart-box full-width">
-          <div class="chart-title">전체 월별 통계 테이블</div>
-          <div style="overflow-x:auto">
-            <table class="stats-month-table" id="statsTable">
-              <thead id="statsHead"></thead>
-              <tbody id="statsBody"></tbody>
-            </table>
-          </div>
         </div>
 
         <!-- 확정 파일 다운로드 -->
