@@ -436,6 +436,30 @@ document.getElementById('btnInsert').addEventListener('click', async () => {
 
   if (mode === 'weekly' && !weekLabel) return showToast('주차를 선택해주세요.', 'error');
 
+  // ── 월 일치 검증 ─────────────────────────────────────
+  // 파일명에서 대상 월 추출 (예: "2026년 03월..." → 3)
+  const fileMonthMatch = monthlyFilename.match(/(\d{1,2})월/);
+  const fileMonth = fileMonthMatch ? parseInt(fileMonthMatch[1], 10) : null;
+  if (fileMonth && Object.keys(statsData).length > 0) {
+    // 처리된 데이터의 주 대상 월 집계
+    const monthCount = {};
+    for (const tab in statsData) {
+      const pm = statsData[tab].primary_month; // e.g. "3월"
+      if (pm) {
+        const n = parseInt(pm);
+        monthCount[n] = (monthCount[n] || 0) + 1;
+      }
+    }
+    const dataMonth = Object.entries(monthCount).sort((a, b) => b[1] - a[1])[0]?.[0];
+    if (dataMonth && parseInt(dataMonth) !== fileMonth) {
+      showToast(
+        `선택한 파일은 ${fileMonth}월 파일이지만, 처리된 데이터는 ${dataMonth}월 데이터입니다.\n해당 월 데이터가 아닙니다.`,
+        'error'
+      );
+      return;
+    }
+  }
+
   const modeLabel = { daily: '일별 추가', weekly: '주차 확정', monthly: '월 마감' }[mode];
   if (mode === 'monthly') {
     if (!confirm(`[월 마감] ${monthlyFilename}의 전체 데이터를 새 데이터로 교체합니다.\n계속하시겠습니까?`)) return;
