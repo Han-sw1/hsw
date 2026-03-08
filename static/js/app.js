@@ -456,7 +456,13 @@ document.getElementById('btnInsert').addEventListener('click', async () => {
         week_label: weekLabel,
       }),
     });
-    const data = await res.json();
+    let data;
+    try {
+      data = await res.json();
+    } catch (_) {
+      showToast('서버 메모리 부족으로 처리 실패. 잠시 후 다시 시도하거나 로컬에서 실행하세요.', 'error');
+      return;
+    }
 
     if (!data.ok) {
       showToast(data.error || '삽입 오류', 'error');

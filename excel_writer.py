@@ -1,3 +1,4 @@
+import gc
 import os
 import pandas as pd
 from openpyxl import load_workbook
@@ -139,6 +140,33 @@ def _clear_and_write(ws, headers, rows):
             ws.cell(row=ri, column=ci, value=val)
 
 
+def _prepare_tab_data(final_tabs, mode, week_label):
+    """
+    final_tabs DataFrame에서 필요한 데이터만 추출하여 반환.
+    xlsx 로딩 전에 DataFrame을 메모리에서 해제하기 위해 분리.
+    반환: {tab_name: {"new_rows": [...], "df_cols": [...], "skipped": bool, ...}}
+    """
+    prepared = {}
+    for tab_name, new_df in final_tabs.items():
+        if new_df is None or new_df.empty:
+            prepared[tab_name] = {"skipped": True, "reason": "데이터 없음"}
+            continue
+        sheet_name = TAB_TO_RAWSHEET.get(tab_name)
+        if not sheet_name:
+            prepared[tab_name] = {"skipped": True, "reason": "시트 매핑 없음"}
+            continue
+        # DataFrame에서 필요한 정보만 추출 (컬럼명 + 값 리스트)
+        df_cols = list(new_df.columns)
+        df_values = new_df.values.tolist()
+        prepared[tab_name] = {
+            "skipped": False,
+            "sheet_name": sheet_name,
+            "df_cols": df_cols,
+            "df_values": df_values,
+        }
+    return prepared
+
+
 def insert_into_monthly(final_tabs, monthly_filename, mode="daily", week_label=None):
     """
     처리된 데이터를 월간 파일 숨김 시트에 삽입.
@@ -152,18 +180,22 @@ def insert_into_monthly(final_tabs, monthly_filename, mode="daily", week_label=N
     if not os.path.exists(file_path):
         return {"error": f"파일 없음: {monthly_filename}"}
 
+    # 1단계: DataFrame에서 필요한 데이터만 추출 (순수 파이썬 자료구조)
+    prepared = _prepare_tab_data(final_tabs, mode, week_label)
+
+    # 2단계: DataFrame 메모리 해제 후 xlsx 로드
+    del final_tabs
+    gc.collect()
+
     wb = load_workbook(file_path)
     report = {}
 
-    for tab_name, new_df in final_tabs.items():
-        if new_df is None or new_df.empty:
-            report[tab_name] = {"skipped": True, "reason": "데이터 없음"}
+    for tab_name, prep in prepared.items():
+        if prep.get("skipped"):
+            report[tab_name] = {"skipped": True, "reason": prep.get("reason", "")}
             continue
 
-        sheet_name = TAB_TO_RAWSHEET.get(tab_name)
-        if not sheet_name:
-            report[tab_name] = {"skipped": True, "reason": "시트 매핑 없음"}
-            continue
+        sheet_name = prep["sheet_name"]
         if sheet_name not in wb.sheetnames:
             report[tab_name] = {"skipped": True, "reason": f"시트 없음: {sheet_name}"}
             continue
@@ -173,12 +205,26 @@ def insert_into_monthly(final_tabs, monthly_filename, mode="daily", week_label=N
 
         # 시트가 비어있으면 새 데이터 구조로 초기화
         if not sheet_headers:
-            sheet_headers = list(new_df.columns)
+            sheet_headers = prep["df_cols"]
             existing_rows = []
 
         num_cols = len(sheet_headers)
-        col_map = _build_col_map(sheet_headers, list(new_df.columns))
-        new_rows = _map_rows(new_df, col_map, num_cols)
+        df_cols = prep["df_cols"]
+        df_values = prep["df_values"]
+
+        # df_values → 시트 컬럼 순서에 맞춘 row 리스트
+        col_map = _build_col_map(sheet_headers, df_cols)
+        new_rows = []
+        for row_vals in df_values:
+            r = [None] * num_cols
+            for ci, col in enumerate(df_cols):
+                pos = col_map.get(col)
+                if pos is not None and pos < num_cols:
+                    val = row_vals[ci]
+                    if val is None or (isinstance(val, float) and pd.isna(val)):
+                        val = None
+                    r[pos] = val
+            new_rows.append(r)
 
         id_pos = _find_col_pos(sheet_headers, "접수번호", "No")
         week_pos = _find_col_pos(sheet_headers, "주차")
@@ -198,11 +244,10 @@ def insert_into_monthly(final_tabs, monthly_filename, mode="daily", week_label=N
         else:  # daily
             if id_pos is not None:
                 existing_ids = {str(r[id_pos]) for r in existing_rows if r[id_pos] is not None}
-                # processor 컬럼 중 id_pos와 매핑된 것
-                id_proc_col = next((c for c, p in col_map.items() if p == id_pos), None)
-                if id_proc_col and id_proc_col in new_df.columns:
-                    new_id_vals = new_df[id_proc_col].astype(str).tolist()
-                    to_add = [r for r, nid in zip(new_rows, new_id_vals) if nid not in existing_ids]
+                id_col_idx = next((ci for ci, c in enumerate(df_cols) if col_map.get(c) == id_pos), None)
+                if id_col_idx is not None:
+                    to_add = [r for r, vals in zip(new_rows, df_values)
+                              if str(vals[id_col_idx]) not in existing_ids]
                 else:
                     to_add = new_rows
                 merged = existing_rows + to_add
@@ -230,6 +275,8 @@ def insert_into_monthly(final_tabs, monthly_filename, mode="daily", week_label=N
         }
 
     wb.save(file_path)
+    del wb
+    gc.collect()
     return report
 
 

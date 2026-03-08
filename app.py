@@ -277,8 +277,10 @@ def insert_monthly():
         return jsonify({"error": "처리된 데이터가 없습니다. 먼저 처리를 실행해주세요."}), 400
 
     try:
+        import gc
         with open(pkl_path, "rb") as f:
             final_tabs = pickle.load(f)
+        gc.collect()
 
         report = insert_into_monthly(
             final_tabs,
