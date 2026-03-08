@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ATEC 장애 분석 대시보드</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script src="/static/js/chart.min.js"></script>
+  <style>
+    .analysis-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-top: 6px;
+    }
+    @media (max-width: 900px) { .analysis-grid { grid-template-columns: 1fr; } }
+    .chart-box { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow); padding: 22px; }
+    .chart-title { font-size: 15px; font-weight: 700; color: var(--gray-dark); margin-bottom: 16px; }
+    .chart-canvas-wrap { position: relative; height: 300px; }
+    .filter-bar {
+      display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+      background: var(--white); border-radius: var(--radius);
+      box-shadow: var(--shadow); padding: 16px 22px;
+      margin-bottom: 4px;
+    }
+    .filter-label { font-size: 13px; font-weight: 700; color: var(--gray-dark); white-space: nowrap; }
+    .tab-checks { display: flex; gap: 8px; flex-wrap: wrap; }
+    .tab-check {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 5px 12px; border-radius: 6px; border: 1.5px solid var(--border);
+      font-size: 12px; font-weight: 600; cursor: pointer; user-select: none;
+      background: var(--white); color: var(--gray-dark); transition: all 0.15s;
+    }
+    .tab-check.active.seoul   { background: var(--primary); border-color: var(--primary); color: #fff; }
+    .tab-check.active.airport { background: var(--blue);    border-color: var(--blue);    color: #fff; }
+    .tab-check.active.regional{ background: var(--green);   border-color: var(--green);   color: #fff; }
+    .comments-card { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+    .comment-list { list-style: none; padding: 0; margin: 0; }
+    .comment-item {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 13px 22px; border-bottom: 1px solid var(--border);
+      font-size: 13px; line-height: 1.7;
+    }
+    .comment-item:last-child { border-bottom: none; }
+    .c-tag {
+      font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 5px;
+      white-space: nowrap; flex-shrink: 0; margin-top: 2px;
+    }
+    .c-tag.전체    { background: #EEE; color: #555; }
+    .c-tag.alert   { background: #FFE4E4; color: var(--primary); }
+    .c-tag.info    { background: #EBF3FB; color: var(--blue); }
+    .c-tag.good    { background: #EBF7EE; color: var(--green); }
+    .c-tag.bad     { background: #FCEEF5; color: var(--primary); }
+    .c-tag.new     { background: #FFF3CD; color: #7A4800; }
+    .c-tag.divider { background: var(--gray-light); color: var(--gray); }
+    .comment-text { flex: 1; color: var(--gray-dark); }
+    .comment-item.divider-row { background: var(--gray-light); justify-content: center; padding: 8px; }
+    .comment-item.divider-row .comment-text { text-align: center; color: var(--gray); font-size: 12px; }
+    .stats-month-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .stats-month-table th {
+      background: var(--brand-gray); color: var(--white);
+      padding: 11px 14px; text-align: center; font-weight: 700; white-space: nowrap; font-size: 13px;
+    }
+    .stats-month-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); text-align: center; font-size: 13px; }
+    .stats-month-table td:first-child { text-align: left; }
+    .stats-month-table tr:hover { background: var(--gray-light); }
+    .rate-cell { font-weight: 700; font-size: 13px; }
+    .rate-bad  { color: var(--primary); }
+    .rate-ok   { color: var(--green); }
+    .nav-back {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 13px; color: var(--gray); text-decoration: none;
+      padding: 7px 14px; border-radius: 6px; border: 1.5px solid var(--border);
+      background: var(--white); font-weight: 600;
+      transition: all 0.15s;
+    }
+    .nav-back:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+    .section-title {
+      font-size: 14px; font-weight: 700; color: var(--gray-dark);
+      letter-spacing: 0.2px; margin-bottom: 4px;
+    }
+    .compare-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+    }
+    @media (max-width: 700px) { .compare-grid { grid-template-columns: 1fr; } }
+    .compare-box {
+      background: var(--gray-light); border-radius: 8px; padding: 16px;
+    }
+    .compare-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 13px;
+    }
+    .compare-row:last-child { border-bottom: none; }
+    .compare-tab { font-weight: 600; color: var(--gray-dark); }
+    .compare-val { font-weight: 800; font-size: 15px; }
+    .compare-diff { font-size: 12px; margin-left: 6px; }
+    .diff-up   { color: var(--primary); font-weight: 700; }
+    .diff-down { color: var(--green); font-weight: 700; }
+    .diff-same { color: var(--gray); }
+    .month-sel { padding: 8px 14px; border: 1.5px solid var(--border); border-radius: 6px; font-size: 13px; font-family: inherit; background: var(--white); cursor: pointer; }
+    .month-sel:focus { outline: none; border-color: var(--primary); }
+    .loading-bar { text-align: center; padding: 60px; color: var(--gray); font-size: 14px; }
+    .full-width { grid-column: 1 / -1; }
+    .download-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .btn-dl {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600;
+      cursor: pointer; border: 1.5px solid var(--border); background: var(--white);
+      color: var(--gray-dark); transition: all 0.15s; font-family: inherit;
+    }
+    .btn-dl:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+    .btn-dl.confirmed { border-color: #FFD700; background: #FFFBEA; color: #7A4800; }
+    .btn-dl.confirmed:hover { background: #FFF3CD; }
+    /* 분석 대시보드 탭 라벨 */
+    .tab-label-analysis {
+      display: inline-block; padding: 4px 12px; border-radius: 5px;
+      font-size: 13px; font-weight: 700; white-space: nowrap;
+    }
+    .tab-label-analysis.seoul   { background: #FDF0F5; color: var(--primary); border: 1px solid #F0C0D4; }
+    .tab-label-analysis.airport { background: #EBF3FB; color: var(--blue);    border: 1px solid #AACCE8; }
+    .tab-label-analysis.regional{ background: #EBF7EE; color: var(--green);   border: 1px solid #A8D8B4; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <a class="logo-area" href="/">
+        <img src="/static/logo.png" alt="ATEC 에이텍모빌리티" class="logo-img">
+      </a>
+      <div class="header-title">장애 분석 대시보드</div>
+      <div class="header-right">
+        <a href="/" class="nav-back">&#8592; 메인으로</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <div id="loadingBar" class="loading-bar">데이터를 불러오는 중입니다...</div>
+    <div id="dashContent" style="display:none">
+
+      <!-- 탭 필터 -->
+      <div class="filter-bar">
+        <span class="filter-label">단말기 선택</span>
+        <div class="tab-checks" id="tabChecks"></div>
+        <button class="btn btn-secondary btn-sm" onclick="selectAllTabs()">전체</button>
+        <button class="btn btn-secondary btn-sm" onclick="clearAllTabs()">해제</button>
+      </div>
+
+      <!-- 차트 영역 -->
+      <div class="analysis-grid">
+        <div class="chart-box">
+          <div class="chart-title">월별 장애 건수 추이</div>
+          <div class="chart-canvas-wrap"><canvas id="countChart"></canvas></div>
+        </div>
+        <div class="chart-box">
+          <div class="chart-title">월별 장애율(%) 추이</div>
+          <div class="chart-canvas-wrap"><canvas id="rateChart"></canvas></div>
+        </div>
+
+        <!-- 월별 상세 비교 -->
+        <div class="chart-box full-width">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+            <div class="chart-title" style="margin:0">월별 단말기 상세 비교</div>
+            <select class="month-sel" id="monthSelA" onchange="renderCompare()"></select>
+            <span style="font-size:13px;color:var(--gray)">vs</span>
+            <select class="month-sel" id="monthSelB" onchange="renderCompare()"></select>
+          </div>
+          <div class="compare-grid" id="compareGrid"></div>
+        </div>
+
+        <!-- 코멘트 -->
+        <div class="comments-card full-width">
+          <div class="card-header" style="flex-wrap:wrap;gap:10px;">
+            <span class="card-icon">&#128172;</span>
+            <h2 style="margin-right:auto">자동 분석 코멘트</h2>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <select class="month-sel" id="commentSelA" onchange="refreshComments()"></select>
+              <span style="font-size:13px;color:var(--gray)">vs</span>
+              <select class="month-sel" id="commentSelB" onchange="refreshComments()"></select>
+            </div>
+          </div>
+          <ul class="comment-list" id="commentList"></ul>
+        </div>
+
+        <!-- 전체 통계 테이블 -->
+        <div class="chart-box full-width">
+          <div class="chart-title">전체 월별 통계 테이블</div>
+          <div style="overflow-x:auto">
+            <table class="stats-month-table" id="statsTable">
+              <thead id="statsHead"></thead>
+              <tbody id="statsBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 확정 파일 다운로드 -->
+        <div class="chart-box full-width">
+          <div class="chart-title" style="margin-bottom:12px">확정 데이터 파일 다운로드</div>
+          <div class="download-row" id="downloadRow"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/static/js/analysis.js"></script>
+</body>
+</html>

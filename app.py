@@ -2,8 +2,14 @@ from flask import Flask, render_template, request, jsonify, send_file
 import os
 import tempfile
 import json
+import pickle
 from datetime import datetime
 from processor import process_all_files, tabs_to_excel_bytes, build_preview
+from excel_writer import list_monthly_files, insert_into_monthly, compute_web_stats, get_monthly_file_path
+from analytics import (
+    get_all_historical_stats, generate_comments, generate_upload_comparison,
+    read_운영수량_only, TAB_ORDER as ANALYTICS_TAB_ORDER, _parse_ym,
+)
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB
@@ -51,6 +57,33 @@ def update_config():
     return jsonify({"ok": True})
 
 
+def _is_confirmed(filename):
+    """25년6월~26년2월 파일은 확정(잠금) 상태."""
+    import re
+    m = re.search(r'(\d{4})년\s*(\d{2})월', filename)
+    if not m:
+        return False
+    year, month = int(m.group(1)), int(m.group(2))
+    if year < 2025:
+        return True
+    if year == 2025 and month >= 6:
+        return True
+    if year == 2026 and month <= 2:
+        return True
+    return False
+
+
+@app.route("/api/monthly-files")
+def get_monthly_files():
+    files = list_monthly_files()
+    return jsonify({
+        "files": [
+            {"name": f, "confirmed": _is_confirmed(f)}
+            for f in files
+        ]
+    })
+
+
 @app.route("/api/process", methods=["POST"])
 def process():
     cfg = load_config()
@@ -67,7 +100,6 @@ def process():
     if not cits_path or not os.path.exists(cits_path):
         return jsonify({"error": "CITS 기준 파일 경로를 확인해주세요. (⚙ 설정)"}), 400
 
-    # 임시 파일 저장
     tmp_paths = []
     try:
         for f in files:
@@ -85,7 +117,6 @@ def process():
 
         excel_bytes = tabs_to_excel_bytes(final_tabs)
 
-        # 결과 저장
         result_dir = os.path.join(os.path.dirname(__file__), "results")
         os.makedirs(result_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -94,13 +125,68 @@ def process():
         with open(result_path, "wb") as f:
             f.write(excel_bytes)
 
+        # 처리 결과 저장 (월간 삽입에서 재사용)
+        pkl_path = result_path + ".pkl"
+        with open(pkl_path, "wb") as f:
+            pickle.dump(final_tabs, f)
+
         previews = build_preview(final_tabs)
+        stats = compute_web_stats(final_tabs)
+
+        # 주차 목록 추출
+        all_weeks = set()
+        for tab_stats in stats.values():
+            all_weeks.update(tab_stats.get("weeks", []))
+
+        # 주 대상 월 감지 → 해당 월간 파일에서 운영수량 읽어 장애율 추가
+        primary_months = {ts["primary_month"] for ts in stats.values() if ts.get("primary_month")}
+        운영수량_map = {}
+        if primary_months:
+            try:
+                pm_num = int(sorted(primary_months, key=lambda x: int(x.replace("월", "")))[-1].replace("월", ""))
+                target_file = next(
+                    (f for f in list_monthly_files() if f" {pm_num:02d}월" in f),
+                    None
+                )
+                if target_file:
+                    운영수량_map = read_운영수량_only(target_file)
+            except Exception:
+                pass
+
+        for tab_name, ts in stats.items():
+            op = 운영수량_map.get(tab_name)
+            if op and op > 0:
+                cnt = ts.get("total_primary", ts.get("total", 0))
+                ts["운영수량"] = op
+                ts["fault_rate"] = round(cnt / op * 100, 2)
+            else:
+                ts["운영수량"] = None
+                ts["fault_rate"] = None
+
+        # 최신 stats 저장 (분석 페이지 신규 vs 전월 비교용)
+        try:
+            latest_stats_path = os.path.join(result_dir, "latest_stats.json")
+            with open(latest_stats_path, "w", encoding="utf-8") as f:
+                json.dump(stats, f, ensure_ascii=False, default=str)
+        except Exception:
+            pass
+
+        # 신규 업로드 vs 직전 확정 월 비교 코멘트 (비확정 데이터가 있는 경우만)
+        upload_comments = []
+        try:
+            hist = get_all_historical_stats()
+            upload_comments = generate_upload_comparison(stats, hist)
+        except Exception:
+            pass
 
         return jsonify({
             "ok": True,
             "summary": summary,
             "filename": result_filename,
             "previews": previews,
+            "stats": stats,
+            "weeks": sorted(all_weeks),
+            "upload_comments": upload_comments,
             "file_types": {
                 os.path.basename(p): m.get("type", "unknown")
                 for p, m in zip(tmp_paths, meta.values())
@@ -118,6 +204,104 @@ def process():
                 pass
 
 
+@app.route("/api/insert-monthly", methods=["POST"])
+def insert_monthly():
+    data = request.json
+    result_key = data.get("result_key")
+    monthly_filename = data.get("monthly_filename")
+    mode = data.get("mode", "daily")
+    week_label = data.get("week_label", "")
+
+    if not result_key or not monthly_filename:
+        return jsonify({"error": "result_key 또는 monthly_filename 누락"}), 400
+
+    if _is_confirmed(monthly_filename):
+        return jsonify({"error": f"확정 완료된 파일입니다. 삽입이 불가합니다.\n({monthly_filename})"}), 403
+
+    result_dir = os.path.join(os.path.dirname(__file__), "results")
+    pkl_path = os.path.join(result_dir, result_key + ".pkl")
+
+    if not os.path.exists(pkl_path):
+        return jsonify({"error": "처리된 데이터가 없습니다. 먼저 처리를 실행해주세요."}), 400
+
+    try:
+        with open(pkl_path, "rb") as f:
+            final_tabs = pickle.load(f)
+
+        report = insert_into_monthly(
+            final_tabs,
+            monthly_filename,
+            mode=mode,
+            week_label=week_label if mode == "weekly" else None,
+        )
+
+        if "error" in report:
+            return jsonify({"error": report["error"]}), 400
+
+        return jsonify({"ok": True, "report": report, "filename": monthly_filename})
+
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "detail": traceback.format_exc()}), 500
+
+
+@app.route("/analysis")
+def analysis_page():
+    return render_template("analysis.html")
+
+
+@app.route("/api/analysis-data")
+def analysis_data():
+    try:
+        all_stats = get_all_historical_stats()
+
+        comments = generate_comments(all_stats)
+
+        # 차트용 데이터 변환
+        sorted_keys = sorted(all_stats.keys())
+        labels = [all_stats[k]["label"] for k in sorted_keys]
+
+        chart_datasets = {}
+        for tab in ANALYTICS_TAB_ORDER:
+            counts = []
+            rates = []
+            for k in sorted_keys:
+                tab_data = all_stats[k]["tabs"].get(tab, {})
+                counts.append(tab_data.get("count", 0))
+                rates.append(tab_data.get("fault_rate"))
+            chart_datasets[tab] = {"counts": counts, "rates": rates}
+
+        # 각 월별 확정 여부 플래그 추가
+        for k, v in all_stats.items():
+            v["confirmed"] = _is_confirmed(v.get("filename", ""))
+
+        return jsonify({
+            "ok": True,
+            "labels": labels,
+            "chart_datasets": chart_datasets,
+            "all_stats": all_stats,
+            "comments": comments,
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "detail": traceback.format_exc()}), 500
+
+
+@app.route("/api/analysis-comments")
+def analysis_comments():
+    """선택한 기간(from/to)에 대한 코멘트 생성."""
+    try:
+        from_key = request.args.get("from")
+        to_key = request.args.get("to")
+
+        all_stats = get_all_historical_stats()
+        comments = generate_comments(all_stats, from_key=from_key, to_key=to_key)
+        return jsonify({"ok": True, "comments": comments})
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "detail": traceback.format_exc()}), 500
+
+
 @app.route("/api/download/<filename>")
 def download(filename):
     result_dir = os.path.join(os.path.dirname(__file__), "results")
@@ -125,6 +309,14 @@ def download(filename):
     if not os.path.exists(path):
         return jsonify({"error": "파일 없음"}), 404
     return send_file(path, as_attachment=True, download_name=filename)
+
+
+@app.route("/api/download-monthly/<filename>")
+def download_monthly(filename):
+    file_path = get_monthly_file_path(filename)
+    if not os.path.exists(file_path):
+        return jsonify({"error": "파일 없음"}), 404
+    return send_file(file_path, as_attachment=True, download_name=filename)
 
 
 if __name__ == "__main__":

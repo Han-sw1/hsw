@@ -7,6 +7,20 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    .comment-list { list-style:none; padding:0; margin:0; }
+    .comment-item { display:flex; align-items:flex-start; gap:10px; padding:11px 20px; border-bottom:1px solid var(--border); font-size:12px; line-height:1.6; }
+    .comment-item:last-child { border-bottom:none; }
+    .c-tag { font-size:10px; font-weight:700; padding:2px 8px; border-radius:4px; white-space:nowrap; flex-shrink:0; margin-top:2px; }
+    .c-tag.summary_bad,.c-tag.bad  { background:#FCEEF5; color:var(--primary); }
+    .c-tag.summary_good,.c-tag.good{ background:#EBF7EE; color:var(--green); }
+    .c-tag.summary_same,.c-tag.info{ background:#EBF3FB; color:var(--blue); }
+    .c-tag.new_bad,.c-tag.new_good,.c-tag.new_same,.c-tag.new { background:#FFF3CD; color:#7A4800; }
+    .c-tag.alert { background:#FFE4E4; color:var(--primary); }
+    .comment-text { flex:1; color:var(--gray-dark); }
+    .comment-item.divider-row { background:var(--gray-light); justify-content:center; padding:7px; }
+    .comment-item.divider-row .comment-text { text-align:center; color:var(--gray); font-size:11px; }
+  </style>
 </head>
 <body>
   <header class="header">
@@ -15,7 +29,10 @@
         <img src="/static/logo.png" alt="ATEC 에이텍모빌리티" class="logo-img">
       </a>
       <div class="header-title">단말기 장애 자동화 시스템</div>
-      <button class="btn-icon" id="btnSettings" title="기준파일 경로 설정">⚙</button>
+      <div class="header-right">
+        <a href="/analysis" class="btn btn-secondary btn-sm">&#128200; 분석 대시보드</a>
+        <button class="btn-icon" id="btnSettings" title="기준파일 경로 설정">&#9881;</button>
+      </div>
     </div>
   </header>
 
@@ -24,7 +41,7 @@
     <div class="modal">
       <div class="modal-header">
         <h2>기준 파일 경로 설정</h2>
-        <button class="btn-close" id="closeSettings">✕</button>
+        <button class="btn-close" id="closeSettings">&#10005;</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
@@ -47,12 +64,12 @@
     <!-- 업로드 영역 -->
     <section class="card upload-card">
       <div class="card-header">
-        <span class="card-icon">📂</span>
+        <span class="card-icon">&#128194;</span>
         <h2>원본 파일 업로드 <span class="sub-title">(여러 파일 동시 업로드 가능)</span></h2>
       </div>
       <div class="card-body">
         <div class="drop-zone" id="dropZone">
-          <div class="drop-icon">📋</div>
+          <div class="drop-icon">&#128203;</div>
           <p class="drop-text">파일을 여기에 끌어다 놓거나 클릭하여 선택하세요<br>
           <span class="drop-hint">서울원본 · B710원본 · 공항원본 · 지역버스 — 한 번에 모두 업로드 가능</span></p>
           <input type="file" id="fileInput" accept=".xls,.xlsx" multiple hidden>
@@ -62,13 +79,13 @@
       </div>
       <div class="card-footer">
         <button class="btn btn-primary btn-lg" id="btnProcess" disabled>
-          ⚡ 장애 데이터 처리
+          &#9889; 장애 데이터 처리
         </button>
       </div>
     </section>
 
     <!-- 사용 안내 -->
-    <section class="guide-card">
+    <section class="guide-card" id="guideCard">
       <div class="guide-step">
         <div class="guide-num">1</div>
         <p class="guide-text">
@@ -90,9 +107,9 @@
       <div class="guide-step">
         <div class="guide-num">3</div>
         <p class="guide-text">
-          <strong>⚡ 장애 데이터 처리</strong> 버튼을 눌러<br>
+          <strong>&#9889; 장애 데이터 처리</strong> 버튼을 눌러<br>
           자동 분류·필터링 후<br>
-          <strong>엑셀로 다운로드</strong>하세요.
+          <strong>월간 파일에 삽입</strong>하세요.
         </p>
       </div>
     </section>
@@ -100,19 +117,19 @@
     <!-- 처리 결과 요약 -->
     <section class="card" id="resultCard" style="display:none">
       <div class="card-header">
-        <span class="card-icon">📊</span>
+        <span class="card-icon">&#128202;</span>
         <h2>처리 결과</h2>
-        <button class="btn btn-primary btn-sm" id="btnDownload">⬇ 엑셀 다운로드</button>
+        <button class="btn btn-secondary btn-sm" id="btnDownload">&#11015; 처리결과 엑셀</button>
       </div>
       <div class="card-body">
         <div class="summary-grid" id="summaryGrid"></div>
       </div>
     </section>
 
-    <!-- 미리보기 -->
+    <!-- 데이터 미리보기 -->
     <section class="card" id="previewCard" style="display:none">
       <div class="card-header">
-        <span class="card-icon">🔍</span>
+        <span class="card-icon">&#128269;</span>
         <h2>데이터 미리보기</h2>
         <div class="tab-buttons" id="tabButtons"></div>
       </div>
@@ -125,11 +142,103 @@
       </div>
     </section>
 
+    <!-- 집계 현황 -->
+    <section class="card" id="statsCard" style="display:none">
+      <div class="card-header">
+        <span class="card-icon">&#128200;</span>
+        <h2>집계 현황 <span class="sub-title">— 처리된 데이터 기준</span></h2>
+      </div>
+      <div class="card-body" style="padding:0">
+        <div class="stats-table-wrap">
+          <table class="stats-table" id="statsTable">
+            <thead>
+              <tr>
+                <th>지역 / 단말</th>
+                <th>건수</th>
+                <th>장애율</th>
+                <th>월별 / 주차별</th>
+                <th>TOP3 주요 장애유형</th>
+              </tr>
+            </thead>
+            <tbody id="statsBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 신규 업로드 비교 -->
+    <section class="card" id="uploadCompareCard" style="display:none">
+      <div class="card-header">
+        <span class="card-icon">&#128202;</span>
+        <h2>신규 업로드 데이터 비교 <span class="sub-title">— 직전 확정 월 대비</span></h2>
+      </div>
+      <div class="card-body" style="padding:0">
+        <ul class="comment-list" id="uploadCommentList"></ul>
+      </div>
+    </section>
+
+    <!-- 월간 파일 업데이트 -->
+    <section class="card" id="monthlyCard" style="display:none">
+      <div class="card-header">
+        <span class="card-icon">&#128197;</span>
+        <h2>월간 파일 업데이트</h2>
+      </div>
+      <div class="card-body">
+        <div class="monthly-form">
+          <div class="monthly-row">
+            <div class="form-group">
+              <label>대상 월간 파일</label>
+              <select id="monthlyFileSelect" class="form-select" onchange="onFileSelectChange()"></select>
+            </div>
+            <div class="form-group">
+              <label>삽입 모드</label>
+              <select id="modeSelect" class="form-select" onchange="onModeChange()">
+                <option value="daily">일별 추가</option>
+                <option value="weekly">주차 확정</option>
+                <option value="monthly">월 마감</option>
+              </select>
+            </div>
+            <div class="form-group" id="weekGroup" style="display:none">
+              <label>대상 주차</label>
+              <select id="weekSelect" class="form-select"></select>
+            </div>
+          </div>
+          <div class="confirmed-notice" id="confirmedNotice" style="display:none">
+            이 파일은 <strong>확정 완료</strong>된 데이터입니다. 삽입/수정이 불가합니다.
+          </div>
+          <div class="mode-desc" id="modeDesc">
+            새로운 장애 데이터를 추가합니다. 이미 있는 접수번호는 중복 추가하지 않습니다.
+          </div>
+          <div class="monthly-actions">
+            <button class="btn btn-primary" id="btnInsert">&#128228; 월간 파일에 삽입</button>
+            <button class="btn btn-secondary" id="btnDownloadMonthly" style="display:none">&#11015; 월간 파일 다운로드</button>
+          </div>
+        </div>
+
+        <!-- 삽입 결과 -->
+        <div id="insertReport" style="display:none">
+          <div class="report-title">삽입 결과</div>
+          <table class="stats-table" id="reportTable">
+            <thead>
+              <tr>
+                <th>탭</th>
+                <th>시트</th>
+                <th>기존 건수</th>
+                <th>추가</th>
+                <th>최종 합계</th>
+              </tr>
+            </thead>
+            <tbody id="reportBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <!-- 로딩 -->
     <div class="loading-overlay" id="loadingOverlay" style="display:none">
       <div class="loading-box">
         <div class="spinner"></div>
-        <p>처리 중입니다...</p>
+        <p id="loadingMsg">처리 중입니다...</p>
       </div>
     </div>
 

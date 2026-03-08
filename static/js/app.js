@@ -1,12 +1,20 @@
 let selectedFiles = [];
 let resultFilename = null;
 let previewData = {};
+let statsData = {};
+let detectedWeeks = [];
 
 const TAB_ORDER = [
   "서울 B800", "서울 B700", "서울 B710", "공항 B620",
   "대전 B650", "세종 B500", "제주 B400", "포항 B800",
   "상주,영주,예천 B400", "안동 B520D", "김해 B600"
 ];
+
+const MODE_DESC = {
+  daily:   "새로운 장애 데이터를 추가합니다. 이미 있는 접수번호는 중복 추가하지 않습니다.",
+  weekly:  "선택한 주차의 기존 데이터를 삭제하고 새 데이터로 교체합니다. (목요일 주차 마감용)",
+  monthly: "해당 시트의 전체 데이터를 새 데이터로 교체합니다. (월 마감·확정용)",
+};
 
 function getTabClass(tab) {
   if (tab.startsWith("서울")) return "seoul";
@@ -40,7 +48,7 @@ document.getElementById('saveSettings').addEventListener('click', () => {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(cfg),
-  }).then(r => r.json()).then(() => {
+  }).then(() => {
     closeSettings();
     showToast('설정이 저장되었습니다.', 'success');
   });
@@ -48,7 +56,7 @@ document.getElementById('saveSettings').addEventListener('click', () => {
 
 // ─── 파일 선택 ───────────────────────────────────────
 const fileInput = document.getElementById('fileInput');
-const dropZone = document.getElementById('dropZone');
+const dropZone  = document.getElementById('dropZone');
 
 fileInput.addEventListener('change', e => {
   addFiles(Array.from(e.target.files));
@@ -81,8 +89,9 @@ function removeFile(name) {
   renderFileList();
   document.getElementById('btnProcess').disabled = selectedFiles.length === 0;
   if (!selectedFiles.length) {
-    document.getElementById('resultCard').style.display = 'none';
-    document.getElementById('previewCard').style.display = 'none';
+    ['resultCard','previewCard','statsCard','uploadCompareCard','monthlyCard'].forEach(id => {
+      document.getElementById(id).style.display = 'none';
+    });
   }
 }
 
@@ -90,11 +99,11 @@ function renderFileList(confirmed = false) {
   const list = document.getElementById('fileList');
   list.innerHTML = selectedFiles.map(f => `
     <div class="file-item">
-      <span class="file-icon">📄</span>
+      <span class="file-icon">&#128196;</span>
       <span class="file-name">${f.name}</span>
       <span class="file-type-badge ${confirmed ? 'badge-confirmed' : 'badge-pending'}"
-            data-name="${f.name}">${confirmed ? '✓ 확인됨' : '감지 전'}</span>
-      <button class="btn-remove-file" onclick="removeFile('${f.name.replace(/'/g, "\\'")}')">✕</button>
+            data-name="${f.name}">${confirmed ? '&#10003; 확인됨' : '감지 전'}</span>
+      <button class="btn-remove-file" onclick="removeFile('${f.name.replace(/'/g, "\\'")}')">&#10005;</button>
     </div>
   `).join('');
 }
@@ -102,9 +111,8 @@ function renderFileList(confirmed = false) {
 // ─── 처리 ──────────────────────────────────────────
 document.getElementById('btnProcess').addEventListener('click', async () => {
   if (!selectedFiles.length) return;
-  const guideCard = document.querySelector('.guide-card');
-  if (guideCard) guideCard.style.display = 'none';
-  showLoading(true);
+  document.getElementById('guideCard').style.display = 'none';
+  showLoading(true, '처리 중입니다...');
 
   const formData = new FormData();
   selectedFiles.forEach(f => formData.append('files', f));
@@ -120,17 +128,22 @@ document.getElementById('btnProcess').addEventListener('click', async () => {
 
     resultFilename = data.filename;
     previewData = data.previews || {};
+    statsData = data.stats || {};
+    detectedWeeks = data.weeks || [];
 
-    // 파일 배지 → "확인됨"
     renderFileList(true);
-
-    // 요약 + 미리보기
     renderSummary(data.summary || {});
     renderTabButtons();
+    renderStats(statsData);
+    renderUploadComparison(data.upload_comments || []);
+    setupMonthlySection();
+
     document.getElementById('resultCard').style.display = 'block';
     document.getElementById('previewCard').style.display = 'block';
+    document.getElementById('statsCard').style.display = 'block';
+    document.getElementById('monthlyCard').style.display = 'block';
+    document.getElementById('insertReport').style.display = 'none';
 
-    // 첫 번째 데이터 있는 탭 선택
     const firstTab = TAB_ORDER.find(t => previewData[t] && previewData[t].count > 0) || TAB_ORDER[0];
     selectTab(firstTab);
 
@@ -145,7 +158,7 @@ document.getElementById('btnProcess').addEventListener('click', async () => {
   }
 });
 
-// ─── 다운로드 ─────────────────────────────────────
+// ─── 기존 처리결과 다운로드 ───────────────────────────
 document.getElementById('btnDownload').addEventListener('click', () => {
   if (!resultFilename) return;
   window.location.href = '/api/download/' + encodeURIComponent(resultFilename);
@@ -182,12 +195,9 @@ function renderTabButtons() {
 let currentTab = null;
 function selectTab(tab) {
   currentTab = tab;
-
-  // 요약 카드 활성화
   document.querySelectorAll('.summary-item').forEach((el, i) => {
     el.classList.toggle('active', TAB_ORDER[i] === tab);
   });
-  // 탭 버튼 활성화
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === tab);
   });
@@ -207,7 +217,7 @@ function selectTab(tab) {
   table.style.display = 'table';
   emptyNotice.style.display = 'none';
 
-  const HIGHLIGHT = new Set(['날짜', 'cits', '월', '주차', '장애접수일']);
+  const HIGHLIGHT = new Set(['날짜','cits','월','주차','장애접수일']);
   head.innerHTML = '<tr>' + info.cols.map(c => `<th>${c}</th>`).join('') + '</tr>';
   body.innerHTML = info.rows.map(row =>
     '<tr>' + info.cols.map(c =>
@@ -216,8 +226,226 @@ function selectTab(tab) {
   ).join('');
 }
 
+// ─── 집계 현황 ─────────────────────────────────────
+function renderStats(stats) {
+  const tbody = document.getElementById('statsBody');
+  tbody.innerHTML = TAB_ORDER.map(tab => {
+    const s = stats[tab];
+    if (!s || s.total === 0) return '';
+    const cls = getTabClass(tab);
+
+    // 주차별 배지 (정렬)
+    const weekHtml = Object.entries(s.by_week || {})
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([w, cnt]) => `<span class="week-badge">${w} <b>${cnt}</b>건</span>`)
+      .join('');
+
+    // 월별 배지
+    const monthHtml = Object.entries(s.by_month || {})
+      .sort((a, b) => parseInt(a[0]) - parseInt(b[0]))
+      .map(([m, cnt]) => {
+        const isPrimary = m === s.primary_month;
+        return `<span class="month-badge ${isPrimary ? 'month-primary' : ''}">${m} <b>${cnt}</b>건</span>`;
+      }).join('');
+
+    // 주 건수 = 주 대상 월 건수
+    const displayCount = s.total_primary != null ? s.total_primary : s.total;
+
+    // 장애율
+    const faultRate = s.fault_rate != null
+      ? `<span class="rate-val ${s.fault_rate >= 1 ? 'rate-bad' : 'rate-ok'}">${s.fault_rate}%</span>`
+      : '<span style="color:var(--gray)">-</span>';
+
+    return `
+      <tr>
+        <td><span class="tab-label ${cls}">${tab}</span></td>
+        <td class="count-cell">${displayCount}</td>
+        <td class="rate-cell-stats">${faultRate}</td>
+        <td class="period-cell">
+          <div class="period-row">${monthHtml || '-'}</div>
+          <div class="period-row">${weekHtml || ''}</div>
+        </td>
+        <td class="top3-cell">${s.top3 || '-'}</td>
+      </tr>`;
+  }).join('');
+}
+
+// ─── 신규 업로드 비교 코멘트 ─────────────────────────
+const CSTYLE_MAP = {
+  summary_bad:'bad', summary_good:'good', summary_same:'info',
+  tab_bad:'bad', tab_good:'good', tab_same:'info',
+  new_bad:'new', new_good:'new', new_same:'new',
+  alert:'alert', rate_info:'info', divider:'divider',
+};
+const CLBL_MAP = {
+  summary_bad:'전체▲', summary_good:'전체▼', summary_same:'전체→',
+  tab_bad:'증가▲', tab_good:'감소▼', tab_same:'유지→',
+  new_bad:'신규▲', new_good:'신규▼', new_same:'신규→',
+  alert:'경보⚠', rate_info:'장애율',
+};
+
+function renderUploadComparison(comments) {
+  const card = document.getElementById('uploadCompareCard');
+  const list = document.getElementById('uploadCommentList');
+  if (!comments || !comments.length) {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = 'block';
+  list.innerHTML = comments.map(c => {
+    const cls = CSTYLE_MAP[c.type] || 'info';
+    const lbl = CLBL_MAP[c.type] || (c.tag || '');
+    if (c.type === 'divider') {
+      return `<li class="comment-item divider-row"><span class="comment-text">${c.text}</span></li>`;
+    }
+    return `<li class="comment-item">
+      <span class="c-tag ${cls}">${lbl}</span>
+      <span class="comment-text">${c.text}</span>
+    </li>`;
+  }).join('');
+}
+
+// ─── 월간 파일 섹션 ──────────────────────────────────
+let monthlyFilesInfo = [];
+
+async function setupMonthlySection() {
+  const res = await fetch('/api/monthly-files');
+  const data = await res.json();
+  monthlyFilesInfo = data.files || [];
+
+  const sel = document.getElementById('monthlyFileSelect');
+  if (!monthlyFilesInfo.length) {
+    sel.innerHTML = '<option value="">파일 없음 (monthly_files 폴더 확인)</option>';
+    return;
+  }
+  sel.innerHTML = monthlyFilesInfo.map(f =>
+    `<option value="${f.name}">${f.confirmed ? '🔒 ' : ''}${f.name}${f.confirmed ? ' [확정]' : ''}</option>`
+  ).join('');
+
+  // 데이터에서 감지된 월에 맞는 파일 자동 선택
+  if (detectedWeeks.length > 0) {
+    const week = detectedWeeks[0];
+    const month = week.match(/^(\d+)월/)?.[1];
+    if (month) {
+      const padded = month.padStart(2, '0');
+      const match = monthlyFilesInfo.find(f => f.name.includes(`${padded}월`));
+      if (match) sel.value = match.name;
+    }
+  }
+
+  // 주차 목록
+  const wSel = document.getElementById('weekSelect');
+  wSel.innerHTML = detectedWeeks.map(w => `<option value="${w}">${w}</option>`).join('');
+
+  // 다운로드 버튼 숨기기
+  document.getElementById('btnDownloadMonthly').style.display = 'none';
+
+  // 초기 확정 상태 반영
+  onFileSelectChange();
+}
+
+function onFileSelectChange() {
+  const selVal = document.getElementById('monthlyFileSelect').value;
+  const info = monthlyFilesInfo.find(f => f.name === selVal);
+  const isConfirmed = info?.confirmed ?? false;
+  const btn = document.getElementById('btnInsert');
+  const notice = document.getElementById('confirmedNotice');
+  btn.disabled = isConfirmed;
+  if (notice) notice.style.display = isConfirmed ? 'block' : 'none';
+}
+
+function onModeChange() {
+  const mode = document.getElementById('modeSelect').value;
+  document.getElementById('weekGroup').style.display = mode === 'weekly' ? 'block' : 'none';
+  document.getElementById('modeDesc').textContent = MODE_DESC[mode] || '';
+}
+// 초기 설명
+document.getElementById('modeDesc').textContent = MODE_DESC['daily'];
+
+// ─── 월간 파일 삽입 ──────────────────────────────────
+document.getElementById('btnInsert').addEventListener('click', async () => {
+  if (!resultFilename) return showToast('먼저 처리를 실행해주세요.', 'error');
+  const monthlyFilename = document.getElementById('monthlyFileSelect').value;
+  if (!monthlyFilename) return showToast('대상 파일을 선택해주세요.', 'error');
+  const mode = document.getElementById('modeSelect').value;
+  const weekLabel = document.getElementById('weekSelect').value;
+
+  if (mode === 'weekly' && !weekLabel) return showToast('주차를 선택해주세요.', 'error');
+
+  const modeLabel = { daily: '일별 추가', weekly: '주차 확정', monthly: '월 마감' }[mode];
+  if (mode === 'monthly') {
+    if (!confirm(`[월 마감] ${monthlyFilename}의 전체 데이터를 새 데이터로 교체합니다.\n계속하시겠습니까?`)) return;
+  } else if (mode === 'weekly') {
+    if (!confirm(`[주차 확정] ${monthlyFilename}의 "${weekLabel}" 데이터를 교체합니다.\n계속하시겠습니까?`)) return;
+  }
+
+  showLoading(true, `${modeLabel} 중...`);
+
+  try {
+    const res = await fetch('/api/insert-monthly', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        result_key: resultFilename,
+        monthly_filename: monthlyFilename,
+        mode,
+        week_label: weekLabel,
+      }),
+    });
+    const data = await res.json();
+
+    if (!data.ok) {
+      showToast(data.error || '삽입 오류', 'error');
+      return;
+    }
+
+    renderInsertReport(data.report || {});
+    document.getElementById('insertReport').style.display = 'block';
+    document.getElementById('btnDownloadMonthly').style.display = 'inline-flex';
+    document.getElementById('btnDownloadMonthly').dataset.filename = monthlyFilename;
+
+    const totalAdded = Object.values(data.report)
+      .filter(r => !r.skipped)
+      .reduce((s, r) => s + (r.added || 0), 0);
+    showToast(`삽입 완료! ${totalAdded}건 추가`, 'success');
+    document.getElementById('insertReport').scrollIntoView({ behavior: 'smooth' });
+
+  } catch (e) {
+    showToast('서버 오류: ' + e.message, 'error');
+  } finally {
+    showLoading(false);
+  }
+});
+
+function renderInsertReport(report) {
+  const tbody = document.getElementById('reportBody');
+  tbody.innerHTML = Object.entries(report).map(([tab, r]) => {
+    if (r.skipped) {
+      return `<tr class="row-skipped">
+        <td>${tab}</td>
+        <td colspan="4" style="color:var(--gray);font-style:italic">건너뜀: ${r.reason || ''}</td>
+      </tr>`;
+    }
+    const addedClass = r.added > 0 ? 'added-positive' : '';
+    return `<tr>
+      <td>${tab}</td>
+      <td style="color:var(--gray);font-size:11px">${r.sheet}</td>
+      <td>${r.before}</td>
+      <td class="${addedClass}">+${r.added}</td>
+      <td><b>${r.total}</b></td>
+    </tr>`;
+  }).join('');
+}
+
+document.getElementById('btnDownloadMonthly').addEventListener('click', () => {
+  const fn = document.getElementById('btnDownloadMonthly').dataset.filename;
+  if (!fn) return;
+  window.location.href = '/api/download-monthly/' + encodeURIComponent(fn);
+});
+
 // ─── 유틸 ────────────────────────────────────────
-function showLoading(on) {
+function showLoading(on, msg = '처리 중입니다...') {
+  document.getElementById('loadingMsg').textContent = msg;
   document.getElementById('loadingOverlay').style.display = on ? 'flex' : 'none';
 }
 
