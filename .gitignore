@@ -5,6 +5,7 @@ uploads/
 config.json
 sheet_headers.txt
 server.log
+# 캐시는 Git 포함 (analytics_cache.json은 루트에 별도 관리)
 
 # Excel 파일 기본 제외, 단 monthly_files와 reference_files는 포함
 *.xls

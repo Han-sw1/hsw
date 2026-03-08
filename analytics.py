@@ -36,7 +36,7 @@ TAB_ORDER = [
     "상주,영주,예천 B400", "안동 B520D", "김해 B600",
 ]
 
-CACHE_PATH = os.path.join(os.path.dirname(__file__), "results", "analytics_cache.json")
+CACHE_PATH = os.path.join(os.path.dirname(__file__), "analytics_cache.json")
 
 
 def _parse_ym(filename):
@@ -116,27 +116,42 @@ def read_monthly_stats(filename):
     try:
         wb = load_workbook(path, data_only=True, read_only=True)
 
-        # 로우데이터 시트에서 건수 카운트
+        # 로우데이터 시트에서 건수 카운트 (단일 패스 — read_only 재이터레이션 불가)
         for tab_name in TAB_ORDER:
             raw_sheet = TAB_TO_RAWSHEET.get(tab_name)
             if not raw_sheet or raw_sheet not in wb.sheetnames:
                 continue
+            count = 0
             try:
-                ws_raw = wb[raw_sheet]
-                headers = None
-                count = 0
-                for i, row in enumerate(ws_raw.iter_rows(values_only=True)):
+                date_pos = None
+                for i, row in enumerate(wb[raw_sheet].iter_rows(values_only=True)):
                     if i == 0:
                         headers = list(row)
+                        for j, h in enumerate(headers):
+                            if h == "장애접수일":
+                                date_pos = j
+                                break
+                        if date_pos is None:
+                            occ = [j for j, h in enumerate(headers) if h == "장애접수일시"]
+                            date_pos = occ[1] if len(occ) >= 2 else (occ[0] if occ else None)
                         continue
-                    if headers and any(v is not None for v in row):
-                        # 날짜 컬럼 찾아서 해당 월 건수만 카운트
-                        count += 1  # 일단 전체 카운트 (날짜 필터는 아래에서)
-                # 날짜 필터 적용 (메모리 절약을 위해 스트리밍 방식으로 재처리)
-                if headers:
-                    count = _count_month_streaming(wb[raw_sheet], headers, year, month)
+                    if not any(v is not None for v in row):
+                        continue
+                    if date_pos is None or date_pos >= len(row):
+                        count += 1
+                        continue
+                    val = row[date_pos]
+                    if val is None:
+                        continue
+                    try:
+                        d = val if isinstance(val, date_type) else pd.to_datetime(str(val)).date()
+                        if d.year == year and d.month == month:
+                            count += 1
+                    except Exception:
+                        pass
             except Exception:
                 count = 0
+
             result[tab_name] = {
                 "year": year, "month": month,
                 "count": count,
@@ -162,36 +177,6 @@ def read_monthly_stats(filename):
     return result
 
 
-def _count_month_streaming(ws, headers, year, month):
-    """메모리 절약 스트리밍 방식으로 해당 월 건수 카운트."""
-    date_pos = None
-    for i, h in enumerate(headers):
-        if h == "장애접수일":
-            date_pos = i
-            break
-    if date_pos is None:
-        occ = [i for i, h in enumerate(headers) if h == "장애접수일시"]
-        date_pos = occ[1] if len(occ) >= 2 else (occ[0] if occ else None)
-
-    count = 0
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        if not any(v is not None for v in row):
-            continue
-        if date_pos is None or date_pos >= len(row):
-            count += 1
-            continue
-        val = row[date_pos]
-        if val is None:
-            continue
-        try:
-            d = val if isinstance(val, date_type) else pd.to_datetime(str(val)).date()
-            if d.year == year and d.month == month:
-                count += 1
-        except Exception:
-            pass
-    return count
-
-
 def _cache_valid():
     """캐시 파일이 모든 월간 파일보다 최신인지 확인."""
     if not os.path.exists(CACHE_PATH):
@@ -206,7 +191,9 @@ def _cache_valid():
 
 def get_all_historical_stats(force_refresh=False):
     """모든 월간 파일에서 통계 수집. 캐시 사용."""
-    os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
+    cache_dir = os.path.dirname(CACHE_PATH)
+    if cache_dir:
+        os.makedirs(cache_dir, exist_ok=True)
 
     if not force_refresh and _cache_valid():
         try:
