@@ -24,11 +24,65 @@ function getTabClass(tab) {
 
 // ─── 설정 모달 ───────────────────────────────────────
 document.getElementById('btnSettings').addEventListener('click', () => {
+  document.getElementById('settingsModal').classList.add('open');
+  // 서버에 저장된 기준파일 현황 로드
+  fetch('/api/reference-files').then(r => r.json()).then(data => {
+    const cs = document.getElementById('criteriaStatus');
+    const ks = document.getElementById('citsStatus');
+    if (data.criteria) {
+      cs.textContent = '✔ ' + data.criteria;
+      cs.className = 'ref-status ok';
+    } else {
+      cs.textContent = '미등록 — 파일을 업로드하세요';
+      cs.className = 'ref-status missing';
+    }
+    if (data.cits) {
+      ks.textContent = '✔ ' + data.cits;
+      ks.className = 'ref-status ok';
+    } else {
+      ks.textContent = '미등록 — 파일을 업로드하세요';
+      ks.className = 'ref-status missing';
+    }
+  }).catch(() => {});
+  // 로컬 경로 fallback
   fetch('/api/config').then(r => r.json()).then(cfg => {
     document.getElementById('criteriaPath').value = cfg.criteria_path || '';
     document.getElementById('citsPath').value = cfg.cits_path || '';
-    document.getElementById('settingsModal').classList.add('open');
-  });
+  }).catch(() => {});
+});
+
+function uploadReferenceFile(inputEl, type, statusEl) {
+  const file = inputEl.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('type', type);
+  statusEl.textContent = '업로드 중...';
+  statusEl.className = 'ref-status';
+  fetch('/api/upload-reference', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        statusEl.textContent = '✔ ' + file.name;
+        statusEl.className = 'ref-status ok';
+        showToast(file.name + ' 업로드 완료', 'success');
+      } else {
+        statusEl.textContent = '업로드 실패: ' + (data.error || '오류');
+        statusEl.className = 'ref-status missing';
+      }
+    })
+    .catch(() => {
+      statusEl.textContent = '업로드 실패';
+      statusEl.className = 'ref-status missing';
+    });
+  inputEl.value = '';
+}
+
+document.getElementById('criteriaFileInput').addEventListener('change', function() {
+  uploadReferenceFile(this, 'criteria', document.getElementById('criteriaStatus'));
+});
+document.getElementById('citsFileInput').addEventListener('change', function() {
+  uploadReferenceFile(this, 'cits', document.getElementById('citsStatus'));
 });
 ['closeSettings', 'cancelSettings'].forEach(id =>
   document.getElementById(id).addEventListener('click', closeSettings)

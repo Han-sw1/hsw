@@ -3,5 +3,13 @@ __pycache__/
 results/
 uploads/
 config.json
+sheet_headers.txt
+server.log
+
+# Excel 파일 기본 제외, 단 monthly_files와 reference_files는 포함
 *.xls
 *.xlsx
+!monthly_files/*.xlsx
+!monthly_files/*.xls
+!reference_files/*.xlsx
+!reference_files/*.xls

@@ -15,6 +15,7 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB
 
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
+REFERENCE_DIR = os.path.join(os.path.dirname(__file__), "reference_files")
 
 DEFAULT_CONFIG = {
     "criteria_path": "",
@@ -34,6 +35,24 @@ def save_config(cfg):
         json.dump(cfg, f, ensure_ascii=False, indent=2)
 
 
+def get_reference_paths():
+    """reference_files/ 폴더에서 기준파일 자동 탐지. config.json 경로를 fallback으로 사용."""
+    criteria, cits = None, None
+    if os.path.exists(REFERENCE_DIR):
+        for fn in os.listdir(REFERENCE_DIR):
+            if fn.startswith('.'):
+                continue
+            lower = fn.lower()
+            if '오류처리유형' in fn and (lower.endswith('.xls') or lower.endswith('.xlsx')):
+                criteria = os.path.join(REFERENCE_DIR, fn)
+            elif 'cits' in lower and (lower.endswith('.xls') or lower.endswith('.xlsx')):
+                cits = os.path.join(REFERENCE_DIR, fn)
+    cfg = load_config()
+    criteria = criteria or cfg.get("criteria_path", "")
+    cits = cits or cfg.get("cits_path", "")
+    return criteria, cits
+
+
 @app.route("/")
 def index():
     cfg = load_config()
@@ -43,6 +62,34 @@ def index():
 @app.route("/api/config", methods=["GET"])
 def get_config():
     return jsonify(load_config())
+
+
+@app.route("/api/reference-files")
+def get_reference_files():
+    """현재 서버에 저장된 기준파일 목록 반환."""
+    criteria, cits = get_reference_paths()
+    return jsonify({
+        "criteria": os.path.basename(criteria) if criteria and os.path.exists(criteria) else None,
+        "cits": os.path.basename(cits) if cits and os.path.exists(cits) else None,
+    })
+
+
+@app.route("/api/upload-reference", methods=["POST"])
+def upload_reference():
+    """기준파일 서버 업로드 (reference_files/ 폴더에 저장)."""
+    file_type = request.form.get("type")  # "criteria" or "cits"
+    f = request.files.get("file")
+    if not f or f.filename == "":
+        return jsonify({"error": "파일 없음"}), 400
+    if file_type not in ("criteria", "cits"):
+        return jsonify({"error": "type 파라미터 오류"}), 400
+
+    os.makedirs(REFERENCE_DIR, exist_ok=True)
+    ext = os.path.splitext(f.filename)[1]
+    save_name = f"criteria{ext}" if file_type == "criteria" else f"cits{ext}"
+    save_path = os.path.join(REFERENCE_DIR, save_name)
+    f.save(save_path)
+    return jsonify({"ok": True, "filename": f.filename, "saved_as": save_name})
 
 
 @app.route("/api/config", methods=["POST"])
@@ -92,8 +139,9 @@ def process():
     if not files or all(f.filename == "" for f in files):
         return jsonify({"error": "파일이 없습니다."}), 400
 
-    criteria_path = request.form.get("criteria_path") or cfg.get("criteria_path")
-    cits_path = request.form.get("cits_path") or cfg.get("cits_path")
+    auto_criteria, auto_cits = get_reference_paths()
+    criteria_path = request.form.get("criteria_path") or auto_criteria
+    cits_path = request.form.get("cits_path") or auto_cits
 
     if not criteria_path or not os.path.exists(criteria_path):
         return jsonify({"error": "오류처리유형 기준 파일 경로를 확인해주세요. (⚙ 설정)"}), 400
@@ -320,4 +368,6 @@ def download_monthly(filename):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    debug = os.environ.get("FLASK_DEBUG", "true").lower() == "true"
+    app.run(host="0.0.0.0", port=port, debug=debug)
