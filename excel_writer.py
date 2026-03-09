@@ -228,18 +228,27 @@ def _update_xlsx_sheets(file_path, updates):
     xlsx에서 특정 시트의 sheetData만 교체 — 나머지 모든 서식/수식 완전 보존
     updates: {sheet_name: (headers, rows)}
     """
+    import io as _io
     sheet_xml_map = _get_sheet_xml_map(file_path)
+
+    # 매핑 안 된 시트 경고
+    missing = [sn for sn in updates if sn not in sheet_xml_map]
+    if missing:
+        print(f"[WARN] _update_xlsx_sheets: 시트 매핑 없음 → {missing}")
+        print(f"[WARN] 사용 가능한 시트: {list(sheet_xml_map.keys())}")
+
     paths_to_update = {
         sheet_xml_map[sn]: (h, r)
         for sn, (h, r) in updates.items()
         if sn in sheet_xml_map
     }
     if not paths_to_update:
-        return
+        raise RuntimeError(f"수정할 시트를 찾지 못했습니다. updates={list(updates.keys())}, xml_map={list(sheet_xml_map.keys())}")
 
-    tmp_path = file_path + '.tmp'
+    buf = _io.BytesIO()
     with zipfile.ZipFile(file_path, 'r') as zf_in:
-        with zipfile.ZipFile(tmp_path, 'w', compression=zipfile.ZIP_DEFLATED) as zf_out:
+        with zipfile.ZipFile(buf, 'w', compression=zipfile.ZIP_DEFLATED) as zf_out:
+            matched = set()
             for item in zf_in.infolist():
                 data = zf_in.read(item.filename)
                 if item.filename in paths_to_update:
@@ -248,8 +257,13 @@ def _update_xlsx_sheets(file_path, updates):
                     widths = _calc_col_widths(headers, rows)
                     new_cols = _make_cols_xml(widths)
                     data = _replace_sheetdata(data, new_sd, new_cols)
+                    matched.add(item.filename)
                 zf_out.writestr(item, data)
-    os.replace(tmp_path, file_path)
+        if not matched:
+            raise RuntimeError(f"zip 내 파일 경로 불일치. paths_to_update={list(paths_to_update.keys())}")
+
+    with open(file_path, 'wb') as f:
+        f.write(buf.getvalue())
 
 
 # ─── 메인 삽입 함수 ────────────────────────────────────────────────────────
