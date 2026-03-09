@@ -175,23 +175,22 @@ def read_monthly_stats(filename):
                             d = val if isinstance(val, date_type) else pd.to_datetime(str(val)).date()
                         except Exception:
                             pass
-                    # 월 건수 + 날짜 필터 (다른 달 데이터 제외)
+                    # 월 건수: 해당 연/월 날짜 데이터만 카운트
                     if d is None:
                         if date_pos is None:
                             count += 1
-                        else:
-                            continue  # 날짜 파싱 실패 → 제외
+                        # 날짜 파싱 실패 행은 count에서 제외, by_week는 시도
                     elif d.year == year and d.month == month:
                         count += 1
-                    else:
-                        continue  # 다른 달 데이터 → by_week에도 포함하지 않음
-                    # 주차 레이블 결정
+
+                    # 주차별 건수: 날짜 필터 없이 집계
+                    # (예: 2월26~28일은 날짜상 2월이지만 3월1주차에 속함 → 포함해야 함)
                     wk = None
                     if week_pos is not None and week_pos < len(row) and row[week_pos]:
                         wk = str(row[week_pos])
                     elif d is not None:
                         wk = _date_to_week_label(d)
-                    if wk:
+                    if wk and any(v is not None for v in row):
                         by_week[wk] = by_week.get(wk, 0) + 1
                         # TOP3 장애유형 집계
                         if fault_pos is not None and fault_pos < len(row):
@@ -217,6 +216,7 @@ def read_monthly_stats(filename):
                 "count": count,
                 "by_week": by_week,
                 "by_week_top3": by_week_top3,
+                "by_week_faults": by_week_faults,  # raw Counter (합산용)
                 "운영수량": None,
                 "fault_rate": None,
             }

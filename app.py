@@ -473,7 +473,11 @@ def _cw_stats_cache_valid():
 
 @app.route("/api/confirmed-weeks-stats")
 def confirmed_weeks_stats():
-    """모든 월간 파일의 전체 주차별 탭별 건수+TOP3 반환 (확정 여부 포함). 파일 캐시 사용."""
+    """모든 월간 파일의 전체 주차별 탭별 건수+TOP3 반환 (확정 여부 포함). 파일 캐시 사용.
+
+    같은 주차 레이블이 여러 파일에 걸쳐 있어도 합산함.
+    예) 3월1주 = 2월26~28일 데이터(2월 파일) + 3월1~4일 데이터(3월 파일) → 합산
+    """
     try:
         import re as _re
         from excel_writer import list_monthly_files, get_monthly_file_path
@@ -488,7 +492,10 @@ def confirmed_weeks_stats():
                 pass
 
         cw = load_confirmed_weeks()
-        result = []
+
+        # week_map: display_label → {tab_counts, tab_faults, confirmed}
+        # 같은 주차 레이블은 파일 관계없이 합산
+        week_map = {}
 
         for monthly_filename in sorted(list_monthly_files()):
             if not os.path.exists(get_monthly_file_path(monthly_filename)):
@@ -506,42 +513,70 @@ def confirmed_weeks_stats():
             except Exception:
                 continue
 
-            # 모든 탭의 by_week 주차 합산
+            # 이 파일에서 나오는 모든 주차 처리
             all_weeks: set = set()
             for td in stats.values():
                 all_weeks.update(td.get("by_week", {}).keys())
 
-            for week_label in sorted(all_weeks, key=_week_sort_key):
-                # 파일 월과 주차 레이블 월이 다르면 제외
-                if file_month is not None:
-                    wk_m = _re.search(r'(\d+)월', str(week_label))
-                    if wk_m and int(wk_m.group(1)) != file_month:
-                        continue
+            for week_label in all_weeks:
+                # 주차 레이블의 월 추출 → display_label 연도 결정
+                wk_m = _re.search(r'(\d+)월', str(week_label))
+                wk_month = int(wk_m.group(1)) if wk_m else None
 
-                tab_counts = {
-                    tab: td["by_week"][week_label]
-                    for tab, td in stats.items()
-                    if td.get("by_week", {}).get(week_label, 0) > 0
-                }
-                if not tab_counts:
-                    continue
-
-                # 탭별 TOP3 (주차 기준)
-                tab_top3 = {
-                    tab: td["by_week_top3"][week_label]
-                    for tab, td in stats.items()
-                    if td.get("by_week_top3", {}).get(week_label)
-                }
-
-                is_confirmed = _is_confirmed(monthly_filename) or (week_label in confirmed_for_file)
+                # display_label: 파일 연도 기준 (주차 레이블 월이 파일 월±1 이내)
                 display_label = f"{year_short}년 {week_label}" if year_short else week_label
-                result.append({
-                    "week_label": display_label,
-                    "tab_counts": tab_counts,
-                    "tab_top3": tab_top3,
-                    "total": sum(tab_counts.values()),
-                    "confirmed": is_confirmed,
-                })
+
+                if display_label not in week_map:
+                    week_map[display_label] = {
+                        "tab_counts": {},
+                        "tab_faults": {},   # {tab: {fault: count}} — 합산용
+                        "confirmed": False,
+                        "raw_label": week_label,
+                        "year_short": year_short,
+                    }
+                wm = week_map[display_label]
+
+                # 탭별 건수 + fault 합산
+                for tab, td in stats.items():
+                    cnt = td.get("by_week", {}).get(week_label, 0)
+                    if cnt > 0:
+                        wm["tab_counts"][tab] = wm["tab_counts"].get(tab, 0) + cnt
+                    raw_faults = td.get("by_week_faults", {}).get(week_label, {})
+                    if raw_faults:
+                        tf = wm["tab_faults"].setdefault(tab, {})
+                        for fv, fc in raw_faults.items():
+                            tf[fv] = tf.get(fv, 0) + fc
+
+                # 확정 여부: 주차 레이블 월 == 파일 월인 파일 기준
+                if wk_month is not None and wk_month == file_month:
+                    if _is_confirmed(monthly_filename) or (week_label in confirmed_for_file):
+                        wm["confirmed"] = True
+
+        # 정렬 + 결과 변환
+        def _display_sort_key(label):
+            # "26년 3월1주" → (26, 3, 1)
+            m = _re.search(r'(\d+)년\s*(\d+)월(\d+)주', label)
+            if m:
+                return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            return (99, 99, 99)
+
+        result = []
+        for display_label in sorted(week_map.keys(), key=_display_sort_key):
+            wm = week_map[display_label]
+            if not wm["tab_counts"]:
+                continue
+            # TOP3 계산 (합산된 fault 카운터 기준)
+            tab_top3 = {
+                tab: "/".join(sorted(fc, key=fc.get, reverse=True)[:3])
+                for tab, fc in wm["tab_faults"].items() if fc
+            }
+            result.append({
+                "week_label": display_label,
+                "tab_counts": wm["tab_counts"],
+                "tab_top3": tab_top3,
+                "total": sum(wm["tab_counts"].values()),
+                "confirmed": wm["confirmed"],
+            })
 
         payload = {"ok": True, "weeks": result}
         # 캐시 저장
