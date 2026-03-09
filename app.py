@@ -1,8 +1,19 @@
 from flask import Flask, render_template, request, jsonify, send_file
 import os
+import shutil
 
 _BASE_DIR = os.environ.get("DATA_DIR", os.path.dirname(__file__))
 _RESULTS_DIR = os.path.join(_BASE_DIR, "results")
+
+# Railway Volume 초기화: 월간 파일이 없으면 repo의 monthly_files에서 복사
+_VOLUME_MONTHLY = os.path.join(_BASE_DIR, "monthly_files")
+_REPO_MONTHLY = os.path.join(os.path.dirname(__file__), "monthly_files")
+if _BASE_DIR != os.path.dirname(__file__):
+    os.makedirs(_VOLUME_MONTHLY, exist_ok=True)
+    for _f in os.listdir(_REPO_MONTHLY):
+        _dst = os.path.join(_VOLUME_MONTHLY, _f)
+        if not os.path.exists(_dst):
+            shutil.copy2(os.path.join(_REPO_MONTHLY, _f), _dst)
 import tempfile
 import json
 import pickle
