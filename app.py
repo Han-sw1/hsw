@@ -549,13 +549,15 @@ def confirmed_weeks_stats():
                                 tab_top3[tab_name] = "/".join(v for v, _ in Counter(fault_vals).most_common(3))
 
                     if tab_counts:
+                        # 파일 자체가 확정된 경우(월 확정) 또는 주차 확정된 경우 모두 🔒
+                        is_confirmed = _is_confirmed(monthly_filename) or (week_label in confirmed_for_file)
                         result.append({
                             "week_label": week_label,
                             "monthly_filename": monthly_filename,
                             "tab_counts": tab_counts,
                             "tab_top3": tab_top3,
                             "total": sum(tab_counts.values()),
-                            "confirmed": week_label in confirmed_for_file,
+                            "confirmed": is_confirmed,
                         })
 
             except Exception:

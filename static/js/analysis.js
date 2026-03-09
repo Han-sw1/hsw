@@ -372,13 +372,11 @@ function loadConfirmedWeeksStats() {
       if (!data.ok || !data.weeks || data.weeks.length === 0) return;
       confirmedWeeksData = data.weeks;
 
-      // 드롭다운 채우기 (최신순)
+      // 드롭다운 채우기 (최신순) — 주차 레이블만 표시, 확정 주차는 🔒
       const sel = document.getElementById('confirmedWeekSel');
       sel.innerHTML = [...data.weeks].reverse().map((w, i) => {
-        // "2026년 03월일자별장애현황.xlsx" → "2026년 03월"
-        const ym = w.monthly_filename.match(/\d{4}년\s*\d{2}월/)?.[0] || '';
         const lock = w.confirmed ? ' 🔒' : '';
-        return `<option value="${data.weeks.length - 1 - i}">${w.week_label}${ym ? ' (' + ym + ')' : ''}${lock}</option>`;
+        return `<option value="${data.weeks.length - 1 - i}">${w.week_label}${lock}</option>`;
       }).join('');
 
       document.getElementById('confirmedWeeksSection').style.display = '';
