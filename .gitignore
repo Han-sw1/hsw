@@ -5,7 +5,10 @@ uploads/
 config.json
 sheet_headers.txt
 server.log
-# 캐시는 Git 포함 (analytics_cache.json은 루트에 별도 관리)
+# 런타임 데이터 (git에서 제외 - 로컬/Railway Volume에서 독립 관리)
+confirmed_weeks.json
+analytics_cache.json
+cw_stats_cache.json
 
 # Excel 파일 기본 제외, 단 monthly_files와 reference_files는 포함
 *.xls
