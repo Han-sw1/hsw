@@ -929,33 +929,6 @@ document.getElementById('btnDownloadMonthly').addEventListener('click', () => {
   window.location.href = '/api/download-monthly/' + encodeURIComponent(fn);
 });
 
-// ─── 중복 정리 버튼 ───────────────────────────────────
-document.getElementById('btnCleanupDuplicates').addEventListener('click', async () => {
-  const monthlyFilename = document.getElementById('monthlyFileSelect').value;
-  if (!monthlyFilename) return showToast('대상 파일을 선택해주세요.', 'error');
-  if (!confirm(`[${monthlyFilename}]\n날짜 형식 정규화 및 접수번호 중복 행을 제거합니다.\n계속하시겠습니까?`)) return;
-  showLoading(true, '중복 정리 중...');
-  try {
-    const res = await fetch('/api/cleanup-monthly', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ monthly_filename: monthlyFilename }),
-    });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || '오류');
-    const removed = Object.values(data.report || {}).reduce((s, r) => s + (r.removed || 0), 0);
-    if (removed > 0) {
-      const detail = Object.entries(data.report).map(([t, r]) => `${t}: ${r.removed}건 제거`).join(', ');
-      showToast(`중복 정리 완료! 총 ${removed}건 제거 (${detail})`, 'success');
-    } else {
-      showToast('중복 데이터 없음 — 이미 깨끗합니다.', 'success');
-    }
-  } catch (e) {
-    showToast('오류: ' + e.message, 'error');
-  } finally {
-    showLoading(false);
-  }
-});
 
 // ─── 유틸 ────────────────────────────────────────
 function showLoading(on, msg = '처리 중입니다...') {
