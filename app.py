@@ -486,8 +486,9 @@ def _cw_stats_cache_valid():
 def confirmed_weeks_stats():
     """주차별 탭별 건수+TOP3 반환. analytics_cache 공유로 빠른 로딩.
 
-    같은 주차 레이블이 여러 파일에 걸쳐 있어도 합산함.
-    예) 3월1주 = 2월26~28일 데이터(2월 파일) + 3월1~4일 데이터(3월 파일) → 합산
+    파일 월 == 주차 레이블 월인 경우만 집계.
+    예) 3월1주(2/26~3/4) 데이터는 3월 파일에 전부 삽입되므로 3월 파일만 기준으로 함.
+    (2월 파일에 3월1주 레이블이 있어도 제외 → 중복 방지)
     """
     try:
         import re as _re
@@ -520,6 +521,12 @@ def confirmed_weeks_stats():
                         continue
                     wk_m = _re.search(r'(\d+)월', str(week_label))
                     wk_month = int(wk_m.group(1)) if wk_m else None
+
+                    # 파일 월 != 주차 월이면 제외 (중복 방지)
+                    # 3월1주 데이터는 3월 파일에만 있으므로 2월 파일의 3월1주는 무시
+                    if wk_month is not None and file_month is not None and wk_month != file_month:
+                        continue
+
                     display_label = f"{year_short}년 {week_label}" if year_short else week_label
 
                     if display_label not in week_map:
@@ -531,17 +538,16 @@ def confirmed_weeks_stats():
                     wm = week_map[display_label]
                     wm["tab_counts"][tab] = wm["tab_counts"].get(tab, 0) + cnt
 
-                    # fault 합산 (by_week_faults가 캐시에 있을 때만)
+                    # fault 합산
                     raw_faults = td.get("by_week_faults", {}).get(week_label, {})
                     if raw_faults:
                         tf = wm["tab_faults"].setdefault(tab, {})
                         for fv, fc in raw_faults.items():
                             tf[fv] = tf.get(fv, 0) + fc
 
-                    # 확정 여부: 주차 월 == 파일 월인 경우 기준
-                    if wk_month is not None and wk_month == file_month:
-                        if _is_confirmed(monthly_filename) or (week_label in confirmed_for_file):
-                            wm["confirmed"] = True
+                    # 확정 여부
+                    if _is_confirmed(monthly_filename) or (week_label in confirmed_for_file):
+                        wm["confirmed"] = True
 
         # 정렬 + 결과 변환
         def _display_sort_key(label):

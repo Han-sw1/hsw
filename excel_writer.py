@@ -370,7 +370,20 @@ def insert_into_monthly(final_tabs, monthly_filename, mode="daily", week_label=N
         if mode == "monthly":
             merged = new_rows
         elif mode == "weekly" and week_label:
-            keep = [r for r in existing_rows if str(r[week_pos]) != str(week_label)] if week_pos is not None else existing_rows
+            if week_pos is not None:
+                # 주차 컬럼 있으면: 해당 주차 기존 데이터 삭제 후 교체
+                keep = [r for r in existing_rows if str(r[week_pos]) != str(week_label)]
+            else:
+                # 주차 컬럼 없으면(지역 탭 등): 접수번호 기준 중복 제거
+                if id_pos is not None:
+                    id_col_idx = next((ci for ci, c in enumerate(df_cols) if col_map.get(c) == id_pos), None)
+                    if id_col_idx is not None:
+                        new_ids = {str(vals[id_col_idx]) for vals in df_values}
+                        keep = [r for r in existing_rows if not (len(r) > id_pos and r[id_pos] is not None and str(r[id_pos]) in new_ids)]
+                    else:
+                        keep = existing_rows
+                else:
+                    keep = existing_rows
             merged = keep + new_rows
         else:
             if id_pos is not None:
