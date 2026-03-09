@@ -651,6 +651,7 @@ async function setupMonthlySection() {
 
 // ─── 확정 주차 캐시 ─────────────────────────────────
 let confirmedWeeksCache = {};   // { filename: ["3월1주차", ...] }
+let insertedKeys = new Set();   // "filename::weekLabel" — 이번 세션에서 삽입 완료된 키
 
 async function loadConfirmedWeeks() {
   try {
@@ -725,6 +726,12 @@ document.getElementById('btnConfirmWeek').addEventListener('click', async () => 
   const filename = document.getElementById('monthlyFileSelect').value;
   const weekLabel = document.getElementById('weekSelect').value;
   if (!filename || !weekLabel) return;
+  // 이번 세션에서 해당 파일+주차 삽입 여부 확인
+  const insertKey = `${filename}::${weekLabel}`;
+  if (!insertedKeys.has(insertKey)) {
+    showToast(`먼저 [${weekLabel}] 데이터를 월간 파일에 삽입한 후 확정하세요.`, 'error');
+    return;
+  }
   const pw = prompt(`[${weekLabel}] 확정하려면 비밀번호를 입력하세요.\n확정 후에는 삽입·삭제가 불가하며 취소할 수 없습니다.`);
   if (pw === null) return;
   if (pw !== '951009') { showToast('비밀번호가 올바르지 않습니다.', 'error'); return; }
@@ -865,6 +872,9 @@ document.getElementById('btnInsert').addEventListener('click', async () => {
     const json = await res.json();
     if (!res.ok || json.error) throw new Error(json.error || '삽입 실패');
     const report = json.report;
+
+    // 삽입 완료 기록 (확정 시 검증용)
+    insertedKeys.add(`${monthlyFilename}::${weekLabel}`);
 
     renderInsertReport(report);
     document.getElementById('insertReport').style.display = 'block';
