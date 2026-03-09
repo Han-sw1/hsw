@@ -24,7 +24,7 @@ import json
 import pickle
 from datetime import datetime
 from processor import process_all_files, tabs_to_excel_bytes, build_preview
-from excel_writer import list_monthly_files, insert_into_monthly, compute_web_stats, get_monthly_file_path, delete_weekly
+from excel_writer import list_monthly_files, insert_into_monthly, compute_web_stats, get_monthly_file_path, delete_weekly, cleanup_monthly_duplicates
 from analytics import (
     get_all_historical_stats, generate_comments, generate_upload_comparison,
     generate_week_comparison,
@@ -409,6 +409,22 @@ def unconfirm_week():
         cw[filename].remove(week)
     save_confirmed_weeks(cw)
     return jsonify({"ok": True})
+
+
+@app.route("/api/cleanup-monthly", methods=["POST"])
+def cleanup_monthly_route():
+    data = request.json
+    filename = data.get("monthly_filename")
+    if not filename:
+        return jsonify({"error": "파라미터 누락"}), 400
+    try:
+        report = cleanup_monthly_duplicates(filename)
+        if isinstance(report, dict) and "error" in report:
+            return jsonify({"error": report["error"]}), 400
+        return jsonify({"ok": True, "report": report})
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "detail": traceback.format_exc()}), 500
 
 
 @app.route("/api/delete-weekly", methods=["POST"])

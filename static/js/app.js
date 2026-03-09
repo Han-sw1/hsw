@@ -575,7 +575,7 @@ async function loadQuickStats() {
       </div>`;
     }).join('');
 
-    // 이번 달 주차 확정 현황
+    // 이번 달 주차 확정 현황 + 다운로드 버튼
     // 현재 달 = 가장 최신 월간 파일 기준
     const monthlyFiles = await (await fetch('/api/monthly-files')).json();
     const latestFile = (monthlyFiles.files || []).filter(f => !f.confirmed).slice(-1)[0]
@@ -596,6 +596,14 @@ async function loadQuickStats() {
         const weekRow = document.getElementById('quickWeekRow');
         document.getElementById('quickWeekBadges').innerHTML = badges;
         weekRow.style.display = 'flex';
+      }
+      // 최신 월간 파일 다운로드 버튼
+      const dlRow = document.getElementById('quickDownloadRow');
+      const dlBtn = document.getElementById('btnQuickDownloadMonthly');
+      if (dlRow && dlBtn) {
+        dlBtn.textContent = `⬇ ${fn} 다운로드`;
+        dlBtn.onclick = () => window.location.href = '/api/download-monthly/' + encodeURIComponent(fn);
+        dlRow.style.display = 'block';
       }
     }
 
@@ -919,6 +927,34 @@ document.getElementById('btnDownloadMonthly').addEventListener('click', () => {
   const fn = document.getElementById('btnDownloadMonthly').dataset.filename;
   if (!fn) return;
   window.location.href = '/api/download-monthly/' + encodeURIComponent(fn);
+});
+
+// ─── 중복 정리 버튼 ───────────────────────────────────
+document.getElementById('btnCleanupDuplicates').addEventListener('click', async () => {
+  const monthlyFilename = document.getElementById('monthlyFileSelect').value;
+  if (!monthlyFilename) return showToast('대상 파일을 선택해주세요.', 'error');
+  if (!confirm(`[${monthlyFilename}]\n날짜 형식 정규화 및 접수번호 중복 행을 제거합니다.\n계속하시겠습니까?`)) return;
+  showLoading(true, '중복 정리 중...');
+  try {
+    const res = await fetch('/api/cleanup-monthly', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ monthly_filename: monthlyFilename }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '오류');
+    const removed = Object.values(data.report || {}).reduce((s, r) => s + (r.removed || 0), 0);
+    if (removed > 0) {
+      const detail = Object.entries(data.report).map(([t, r]) => `${t}: ${r.removed}건 제거`).join(', ');
+      showToast(`중복 정리 완료! 총 ${removed}건 제거 (${detail})`, 'success');
+    } else {
+      showToast('중복 데이터 없음 — 이미 깨끗합니다.', 'success');
+    }
+  } catch (e) {
+    showToast('오류: ' + e.message, 'error');
+  } finally {
+    showLoading(false);
+  }
 });
 
 // ─── 유틸 ────────────────────────────────────────

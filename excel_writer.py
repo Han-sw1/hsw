@@ -420,6 +420,61 @@ def insert_into_monthly(final_tabs, monthly_filename, mode="daily", week_label=N
     return report
 
 
+def cleanup_monthly_duplicates(monthly_filename):
+    """월간 파일 모든 로우데이터 시트에서 날짜 정규화 + 접수번호 중복 제거."""
+    file_path = get_monthly_file_path(monthly_filename)
+    if not os.path.exists(file_path):
+        return {"error": f"파일 없음: {monthly_filename}"}
+
+    wb = load_workbook(file_path, read_only=True, data_only=True)
+    updates = {}
+    report = {}
+
+    for tab_name, sheet_name in TAB_TO_RAWSHEET.items():
+        if sheet_name not in wb.sheetnames:
+            continue
+        ws = wb[sheet_name]
+        sheet_headers, existing_rows = _read_sheet(ws)
+        if not sheet_headers or not existing_rows:
+            continue
+
+        id_pos = _find_col_pos(sheet_headers, "접수번호", "No")
+        date_pos = _find_date_pos(sheet_headers)
+        before = len(existing_rows)
+
+        # 날짜 정규화 (00:00:00 제거)
+        if date_pos is not None:
+            for row in existing_rows:
+                if len(row) > date_pos:
+                    row[date_pos] = _normalize_date_val(row[date_pos])
+
+        # 접수번호 기준 중복 제거
+        if id_pos is not None:
+            seen_ids: set = set()
+            cleaned = []
+            for row in existing_rows:
+                rid = str(row[id_pos]) if len(row) > id_pos and row[id_pos] is not None else None
+                if rid is None or rid not in seen_ids:
+                    if rid:
+                        seen_ids.add(rid)
+                    cleaned.append(row)
+            existing_rows = cleaned
+
+        after = len(existing_rows)
+        updates[sheet_name] = (sheet_headers, existing_rows)
+        if before != after:
+            report[tab_name] = {"before": before, "after": after, "removed": before - after}
+
+    wb.close()
+    del wb
+    gc.collect()
+
+    if updates:
+        _update_xlsx_sheets(file_path, updates)
+
+    return report
+
+
 def delete_weekly(monthly_filename, week_label):
     """지정 주차 데이터를 월간 파일 모든 시트에서 삭제."""
     file_path = get_monthly_file_path(monthly_filename)

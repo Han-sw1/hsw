@@ -181,6 +181,12 @@
           <span style="font-size:12px;font-weight:700;color:var(--gray-dark)">이번 달 주차 확정</span>
           <div id="quickWeekBadges" style="display:flex;gap:6px;flex-wrap:wrap"></div>
         </div>
+        <!-- 최신 월간 파일 다운로드 -->
+        <div id="quickDownloadRow" style="display:none;padding:10px 20px 14px;border-top:1px solid var(--border)">
+          <button class="btn btn-outline btn-sm" id="btnQuickDownloadMonthly" style="font-size:12px;gap:5px">
+            &#11015; 월간 파일 다운로드
+          </button>
+        </div>
       </div>
     </section>
 
@@ -297,6 +303,7 @@
           <div class="monthly-actions">
             <button class="btn btn-primary" id="btnInsert">&#128228; 월간 파일에 삽입</button>
             <button class="btn btn-secondary" id="btnDownloadMonthly" style="display:none">&#11015; 월간 파일 다운로드</button>
+            <button class="btn btn-secondary btn-sm" id="btnCleanupDuplicates" title="날짜 형식 정규화 및 접수번호 중복 행 제거">&#9986; 중복 정리</button>
           </div>
         </div>
 
