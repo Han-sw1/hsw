@@ -154,8 +154,24 @@ def _get_sheet_xml_map(file_path):
     return sheet_map
 
 
+def _normalize_date_val(val):
+    """날짜값에서 시간(00:00:00) 제거 → 'YYYY-MM-DD' 문자열 반환."""
+    if val is None:
+        return val
+    if isinstance(val, datetime):
+        if val.hour == 0 and val.minute == 0 and val.second == 0:
+            return val.strftime("%Y-%m-%d")
+        return str(val)
+    if isinstance(val, date_type):
+        return val.strftime("%Y-%m-%d")
+    s = str(val)
+    if re.match(r'\d{4}-\d{2}-\d{2} 00:00:00$', s):
+        return s[:10]
+    return val
+
+
 def _val_to_xml(ref, val):
-    """셀 값 → XML 문자열"""
+    """셀 값 → XML 문자열 (날짜 시간 00:00:00 자동 제거)"""
     if val is None:
         return ''
     if isinstance(val, bool):
@@ -165,8 +181,14 @@ def _val_to_xml(ref, val):
             return ''
         return f'<c r="{ref}"><v>{val}</v></c>'
     if isinstance(val, (date_type, datetime)):
-        return f'<c r="{ref}" t="inlineStr"><is><t>{str(val)}</t></is></c>'
-    safe = saxutils.escape(str(val))
+        s = _normalize_date_val(val)
+        safe = saxutils.escape(str(s))
+        return f'<c r="{ref}" t="inlineStr"><is><t>{safe}</t></is></c>'
+    s = str(val)
+    # 문자열 날짜에서 "00:00:00" 제거
+    if re.match(r'\d{4}-\d{2}-\d{2} 00:00:00$', s):
+        s = s[:10]
+    safe = saxutils.escape(s)
     return f'<c r="{ref}" t="inlineStr"><is><t>{safe}</t></is></c>'
 
 
@@ -326,6 +348,23 @@ def insert_into_monthly(final_tabs, monthly_filename, mode="daily", week_label=N
         id_pos = _find_col_pos(sheet_headers, "접수번호", "No")
         week_pos = _find_col_pos(sheet_headers, "주차")
         date_pos = _find_date_pos(sheet_headers)
+
+        # 기존 행 정리: 날짜 컬럼 00:00:00 제거 + 접수번호 중복 행 제거
+        if date_pos is not None:
+            for row in existing_rows:
+                if len(row) > date_pos:
+                    row[date_pos] = _normalize_date_val(row[date_pos])
+        if id_pos is not None:
+            seen_ids: set = set()
+            cleaned = []
+            for row in existing_rows:
+                rid = str(row[id_pos]) if len(row) > id_pos and row[id_pos] is not None else None
+                if rid is None or rid not in seen_ids:
+                    if rid:
+                        seen_ids.add(rid)
+                    cleaned.append(row)
+            existing_rows = cleaned
+
         before = len(existing_rows)
 
         if mode == "monthly":

@@ -36,7 +36,8 @@ TAB_ORDER = [
     "상주,영주,예천 B400", "안동 B520D", "김해 B600",
 ]
 
-CACHE_PATH = os.path.join(os.path.dirname(__file__), "analytics_cache.json")
+_CACHE_BASE = os.environ.get("DATA_DIR", os.path.dirname(__file__))
+CACHE_PATH = os.path.join(_CACHE_BASE, "analytics_cache.json")
 
 
 def _parse_ym(filename):
