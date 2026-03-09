@@ -1,7 +1,14 @@
 import gc
 import os
+import re
+import zipfile
+import shutil
+import xml.etree.ElementTree as ET
 import pandas as pd
 from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
+import xml.sax.saxutils as saxutils
+from datetime import date as date_type, datetime
 
 _BASE_DIR = os.environ.get("DATA_DIR", os.path.dirname(__file__))
 MONTHLY_FILES_DIR = os.path.join(_BASE_DIR, "monthly_files")
@@ -42,12 +49,6 @@ def _read_sheet(ws):
 
 
 def _build_col_map(sheet_headers, proc_cols):
-    """
-    processor 컬럼명 → 시트 컬럼 위치(0-based) 매핑.
-    특수 규칙:
-      "날짜"  → "장애접수일시" 두 번째 등장 위치
-      "cits"  → "CITS 설치일" 위치
-    """
     name_to_pos = {}
     for i, h in enumerate(sheet_headers):
         if h is None:
@@ -65,7 +66,6 @@ def _build_col_map(sheet_headers, proc_cols):
             positions = name_to_pos.get("장애접수일시", [])
             available = [p for p in positions if p not in used]
             if len(available) >= 2:
-                # 첫 번째는 "장애접수일시"(문자열)에 이미 매핑됨 → 두 번째 선택
                 target = available[1]
             elif available:
                 target = available[0]
@@ -93,21 +93,6 @@ def _build_col_map(sheet_headers, proc_cols):
     return col_map
 
 
-def _map_rows(new_df, col_map, num_cols):
-    """DataFrame → 시트 컬럼 순서에 맞춘 row 리스트."""
-    result = []
-    for _, row in new_df.iterrows():
-        r = [None] * num_cols
-        for col, pos in col_map.items():
-            if pos < num_cols:
-                val = row.get(col)
-                if val is None or (isinstance(val, float) and pd.isna(val)):
-                    val = None
-                r[pos] = val
-        result.append(r)
-    return result
-
-
 def _find_col_pos(sheet_headers, *names):
     for name in names:
         for i, h in enumerate(sheet_headers):
@@ -120,33 +105,13 @@ def _find_date_pos(sheet_headers):
     pos = _find_col_pos(sheet_headers, "장애접수일")
     if pos is not None:
         return pos
-    # "장애접수일시" 두 번째 등장 (날짜 형식)
     occ = [i for i, h in enumerate(sheet_headers) if h == "장애접수일시"]
     if len(occ) >= 2:
         return occ[1]
     return None
 
 
-def _clear_and_write(ws, headers, rows):
-    # 기존 내용 삭제
-    for row in ws.iter_rows():
-        for cell in row:
-            cell.value = None
-    # 헤더
-    for ci, h in enumerate(headers, 1):
-        ws.cell(row=1, column=ci, value=h)
-    # 데이터
-    for ri, row_data in enumerate(rows, 2):
-        for ci, val in enumerate(row_data, 1):
-            ws.cell(row=ri, column=ci, value=val)
-
-
 def _prepare_tab_data(final_tabs, mode, week_label):
-    """
-    final_tabs DataFrame에서 필요한 데이터만 추출하여 반환.
-    xlsx 로딩 전에 DataFrame을 메모리에서 해제하기 위해 분리.
-    반환: {tab_name: {"new_rows": [...], "df_cols": [...], "skipped": bool, ...}}
-    """
     prepared = {}
     for tab_name, new_df in final_tabs.items():
         if new_df is None or new_df.empty:
@@ -156,7 +121,6 @@ def _prepare_tab_data(final_tabs, mode, week_label):
         if not sheet_name:
             prepared[tab_name] = {"skipped": True, "reason": "시트 매핑 없음"}
             continue
-        # DataFrame에서 필요한 정보만 추출 (컬럼명 + 값 리스트)
         df_cols = list(new_df.columns)
         df_values = new_df.values.tolist()
         prepared[tab_name] = {
@@ -168,28 +132,145 @@ def _prepare_tab_data(final_tabs, mode, week_label):
     return prepared
 
 
+# ─── zipfile 기반 시트 교체 (서식 완전 보존) ───────────────────────────────
+
+def _get_sheet_xml_map(file_path):
+    """xlsx에서 시트명 → XML 경로 매핑 반환"""
+    ns_wb = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+    ns_r = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+    with zipfile.ZipFile(file_path, 'r') as zf:
+        wb_tree = ET.fromstring(zf.read('xl/workbook.xml'))
+        rels_tree = ET.fromstring(zf.read('xl/_rels/workbook.xml.rels'))
+        rid_to_target = {rel.get('Id'): rel.get('Target') for rel in rels_tree}
+        sheet_map = {}
+        for sheet in wb_tree.findall(f'{{{ns_wb}}}sheets/{{{ns_wb}}}sheet'):
+            name = sheet.get('name')
+            rid = sheet.get(f'{{{ns_r}}}id')
+            target = rid_to_target.get(rid, '')
+            sheet_map[name] = f'xl/{target}'
+    return sheet_map
+
+
+def _val_to_xml(ref, val):
+    """셀 값 → XML 문자열"""
+    if val is None:
+        return ''
+    if isinstance(val, bool):
+        return f'<c r="{ref}" t="b"><v>{1 if val else 0}</v></c>'
+    if isinstance(val, (int, float)):
+        if pd.isna(val):
+            return ''
+        return f'<c r="{ref}"><v>{val}</v></c>'
+    if isinstance(val, (date_type, datetime)):
+        return f'<c r="{ref}" t="inlineStr"><is><t>{str(val)}</t></is></c>'
+    safe = saxutils.escape(str(val))
+    return f'<c r="{ref}" t="inlineStr"><is><t>{safe}</t></is></c>'
+
+
+def _calc_col_widths(headers, rows, min_w=8, max_w=30):
+    """헤더 + 데이터 기준 열 너비 계산"""
+    widths = [len(str(h)) if h is not None else 0 for h in headers]
+    for row in rows[:2000]:
+        for ci, val in enumerate(row):
+            if val is not None and ci < len(widths):
+                widths[ci] = max(widths[ci], len(str(val)))
+    return [max(min_w, min(w + 2, max_w)) for w in widths]
+
+
+def _make_cols_xml(widths):
+    """열 너비 → <cols>...</cols> XML"""
+    if not widths:
+        return ''
+    parts = ['<cols>']
+    for i, w in enumerate(widths, 1):
+        parts.append(f'<col min="{i}" max="{i}" width="{w}" customWidth="1"/>')
+    parts.append('</cols>')
+    return ''.join(parts)
+
+
+def _make_sheetdata_xml(headers, rows):
+    """headers + rows → <sheetData>...</sheetData> XML"""
+    parts = ['<sheetData>']
+    all_rows = [headers] + rows if headers else rows
+    for ri, row_data in enumerate(all_rows, 1):
+        if not any(v is not None for v in row_data):
+            continue
+        parts.append(f'<row r="{ri}">')
+        for ci, val in enumerate(row_data, 1):
+            ref = f'{get_column_letter(ci)}{ri}'
+            parts.append(_val_to_xml(ref, val))
+        parts.append('</row>')
+    parts.append('</sheetData>')
+    return ''.join(parts)
+
+
+def _replace_sheetdata(sheet_xml_bytes, new_sheetdata_xml, new_cols_xml=''):
+    """시트 XML에서 <sheetData> (및 <cols>) 교체"""
+    sheet_str = sheet_xml_bytes.decode('utf-8')
+    # cols 교체 또는 삽입
+    if new_cols_xml:
+        if re.search(r'<cols[ />]', sheet_str):
+            sheet_str = re.sub(r'<cols[^>]*/?>(?:.*?</cols>)?', new_cols_xml, sheet_str, flags=re.DOTALL)
+        else:
+            sheet_str = sheet_str.replace('<sheetData', new_cols_xml + '<sheetData', 1)
+    # sheetData 교체
+    result = re.sub(
+        r'<sheetData[^>]*/?>(?:.*?</sheetData>)?',
+        new_sheetdata_xml,
+        sheet_str,
+        flags=re.DOTALL,
+    )
+    return result.encode('utf-8')
+
+
+def _update_xlsx_sheets(file_path, updates):
+    """
+    xlsx에서 특정 시트의 sheetData만 교체 — 나머지 모든 서식/수식 완전 보존
+    updates: {sheet_name: (headers, rows)}
+    """
+    sheet_xml_map = _get_sheet_xml_map(file_path)
+    paths_to_update = {
+        sheet_xml_map[sn]: (h, r)
+        for sn, (h, r) in updates.items()
+        if sn in sheet_xml_map
+    }
+    if not paths_to_update:
+        return
+
+    tmp_path = file_path + '.tmp'
+    with zipfile.ZipFile(file_path, 'r') as zf_in:
+        with zipfile.ZipFile(tmp_path, 'w', compression=zipfile.ZIP_DEFLATED) as zf_out:
+            for item in zf_in.infolist():
+                data = zf_in.read(item.filename)
+                if item.filename in paths_to_update:
+                    headers, rows = paths_to_update[item.filename]
+                    new_sd = _make_sheetdata_xml(headers, rows)
+                    widths = _calc_col_widths(headers, rows)
+                    new_cols = _make_cols_xml(widths)
+                    data = _replace_sheetdata(data, new_sd, new_cols)
+                zf_out.writestr(item, data)
+    os.replace(tmp_path, file_path)
+
+
+# ─── 메인 삽입 함수 ────────────────────────────────────────────────────────
+
 def insert_into_monthly(final_tabs, monthly_filename, mode="daily", week_label=None):
     """
     처리된 데이터를 월간 파일 숨김 시트에 삽입.
-    mode:
-      "daily"   - 일별 추가 (접수번호 기준 중복 제외)
-      "weekly"  - 주차 확정 (해당 주차 데이터 교체, week_label 필요: 예 "3월2주")
-      "monthly" - 월 마감 (전체 교체)
-    반환: {tab_name: report}
+    zipfile 방식으로 원본 서식/수식 완전 보존.
     """
     file_path = get_monthly_file_path(monthly_filename)
     if not os.path.exists(file_path):
         return {"error": f"파일 없음: {monthly_filename}"}
 
-    # 1단계: DataFrame에서 필요한 데이터만 추출 (순수 파이썬 자료구조)
     prepared = _prepare_tab_data(final_tabs, mode, week_label)
-
-    # 2단계: DataFrame 메모리 해제 후 xlsx 로드
     del final_tabs
     gc.collect()
 
-    wb = load_workbook(file_path)
+    # 현재 raw data 읽기 (read_only, 저장 없음)
+    wb = load_workbook(file_path, read_only=True, data_only=True)
     report = {}
+    updates = {}  # sheet_name → (headers, merged_rows)
 
     for tab_name, prep in prepared.items():
         if prep.get("skipped"):
@@ -204,7 +285,6 @@ def insert_into_monthly(final_tabs, monthly_filename, mode="daily", week_label=N
         ws = wb[sheet_name]
         sheet_headers, existing_rows = _read_sheet(ws)
 
-        # 시트가 비어있으면 새 데이터 구조로 초기화
         if not sheet_headers:
             sheet_headers = prep["df_cols"]
             existing_rows = []
@@ -213,7 +293,6 @@ def insert_into_monthly(final_tabs, monthly_filename, mode="daily", week_label=N
         df_cols = prep["df_cols"]
         df_values = prep["df_values"]
 
-        # df_values → 시트 컬럼 순서에 맞춘 row 리스트
         col_map = _build_col_map(sheet_headers, df_cols)
         new_rows = []
         for row_vals in df_values:
@@ -234,58 +313,54 @@ def insert_into_monthly(final_tabs, monthly_filename, mode="daily", week_label=N
 
         if mode == "monthly":
             merged = new_rows
-
         elif mode == "weekly" and week_label:
-            if week_pos is not None:
-                keep = [r for r in existing_rows if str(r[week_pos]) != str(week_label)]
-            else:
-                keep = existing_rows
+            keep = [r for r in existing_rows if str(r[week_pos]) != str(week_label)] if week_pos is not None else existing_rows
             merged = keep + new_rows
-
-        else:  # daily
+        else:
             if id_pos is not None:
                 existing_ids = {str(r[id_pos]) for r in existing_rows if r[id_pos] is not None}
                 id_col_idx = next((ci for ci, c in enumerate(df_cols) if col_map.get(c) == id_pos), None)
                 if id_col_idx is not None:
-                    to_add = [r for r, vals in zip(new_rows, df_values)
-                              if str(vals[id_col_idx]) not in existing_ids]
+                    to_add = [r for r, vals in zip(new_rows, df_values) if str(vals[id_col_idx]) not in existing_ids]
                 else:
                     to_add = new_rows
                 merged = existing_rows + to_add
             else:
                 existing_tuples = {tuple(str(v) if v is not None else "" for v in r) for r in existing_rows}
-                to_add = [r for r in new_rows
-                          if tuple(str(v) if v is not None else "" for v in r) not in existing_tuples]
+                to_add = [r for r in new_rows if tuple(str(v) if v is not None else "" for v in r) not in existing_tuples]
                 merged = existing_rows + to_add
 
-        # 날짜 기준 정렬
         if date_pos is not None and merged:
+            def _date_sort_key(r):
+                val = r[date_pos]
+                if val is None:
+                    return (1, '')
+                if isinstance(val, (date_type, datetime)):
+                    return (0, val.isoformat())
+                try:
+                    return (0, pd.to_datetime(str(val)).date().isoformat())
+                except Exception:
+                    return (0, str(val))
             try:
-                merged.sort(key=lambda r: (r[date_pos] is None, str(r[date_pos])))
+                merged.sort(key=_date_sort_key)
             except Exception:
                 pass
 
-        _clear_and_write(ws, sheet_headers, merged)
-
-        added = len(merged) - before
+        updates[sheet_name] = (sheet_headers, merged)
         report[tab_name] = {
             "sheet": sheet_name,
             "before": before,
-            "added": added,
+            "added": len(merged) - before,
             "total": len(merged),
         }
 
-    # 열 너비 보정: bestFit 또는 너비 미설정 컬럼에 기본값 적용
-    for ws in wb.worksheets:
-        for col_letter, col_dim in ws.column_dimensions.items():
-            if col_dim.bestFit or col_dim.width is None or col_dim.width < 2:
-                col_dim.bestFit = False
-                col_dim.customWidth = True
-                col_dim.width = 8
-
-    wb.save(file_path)
+    wb.close()
     del wb
     gc.collect()
+
+    if updates:
+        _update_xlsx_sheets(file_path, updates)
+
     return report
 
 
@@ -295,9 +370,9 @@ def delete_weekly(monthly_filename, week_label):
     if not os.path.exists(file_path):
         return {"error": f"파일 없음: {monthly_filename}"}
 
-    wb = load_workbook(file_path)
+    wb = load_workbook(file_path, read_only=True, data_only=True)
     report = {}
-    changed = False
+    updates = {}
 
     for tab_name, sheet_name in TAB_TO_RAWSHEET.items():
         if sheet_name not in wb.sheetnames:
@@ -313,20 +388,21 @@ def delete_weekly(monthly_filename, week_label):
         kept = [r for r in rows if str(r[week_pos]) != str(week_label)]
         deleted = before - len(kept)
         if deleted > 0:
-            _clear_and_write(ws, headers, kept)
-            changed = True
+            updates[sheet_name] = (headers, kept)
         report[tab_name] = {"sheet": sheet_name, "deleted": deleted, "remaining": len(kept)}
 
-    if changed:
-        wb.save(file_path)
+    wb.close()
     del wb
     gc.collect()
+
+    if updates:
+        _update_xlsx_sheets(file_path, updates)
+
     return report
 
 
 def _get_date_series(df):
     """날짜 컬럼을 date 객체 시리즈로 반환."""
-    from datetime import date as date_type
     date_col = "날짜" if "날짜" in df.columns else "장애접수일"
     if date_col not in df.columns:
         return None
@@ -334,7 +410,6 @@ def _get_date_series(df):
         if isinstance(v, date_type):
             return v
         try:
-            import pandas as pd
             return pd.to_datetime(str(v)).date()
         except Exception:
             return None
@@ -344,10 +419,7 @@ def _get_date_series(df):
 def compute_web_stats(final_tabs):
     """
     처리된 데이터에서 웹 통계 계산.
-    건수는 실제 날짜 기준으로 월별 집계 (주차 레이블 기준 X).
-    반환: {tab_name: {total, total_primary, top3, by_week, by_month, weeks}}
     """
-    import pandas as pd
     stats = {}
     for tab_name, df in final_tabs.items():
         if df is None or df.empty:
@@ -356,22 +428,16 @@ def compute_web_stats(final_tabs):
         is_regional = not any(k in tab_name for k in ["B800", "B700", "B710", "B620"])
         fault_col = "단말기접수유형" if is_regional else "접수오류유형"
 
-        # 날짜 시리즈
         date_series = _get_date_series(df)
 
-        # 월별 건수 (실제 날짜 기준)
         by_month = {}
         primary_month = None
         if date_series is not None:
-            month_vals = date_series.apply(
-                lambda d: f"{d.month}월" if d else None
-            ).dropna()
+            month_vals = date_series.apply(lambda d: f"{d.month}월" if d else None).dropna()
             if not month_vals.empty:
                 by_month = {str(k): int(v) for k, v in month_vals.value_counts().sort_index().items()}
-                # 가장 많은 월 = 주 대상 월
                 primary_month = month_vals.value_counts().idxmax()
 
-        # 주 대상 월의 건수 (해당 월 날짜만)
         total_primary = 0
         if primary_month and date_series is not None:
             pm_num = int(primary_month.replace("월", ""))
@@ -380,7 +446,6 @@ def compute_web_stats(final_tabs):
         else:
             total_primary = len(df)
 
-        # TOP3 (해당 월 레코드 기준)
         top3 = ""
         if fault_col in df.columns:
             if primary_month and date_series is not None:
@@ -394,7 +459,6 @@ def compute_web_stats(final_tabs):
                 top = vals.value_counts().head(3)
                 top3 = "/".join(top.index.tolist())
 
-        # 주차별 건수 (주차 레이블 기준 — 표시용)
         by_week = {}
         if "주차" in df.columns:
             by_week = {str(k): int(v) for k, v in df["주차"].value_counts().sort_index().items()}

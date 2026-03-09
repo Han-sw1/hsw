@@ -854,17 +854,26 @@ document.getElementById('btnInsert').addEventListener('click', async () => {
   showLoading(true, `${modeLabel} 중... (파일을 처리합니다)`);
 
   try {
-    // 브라우저에서 직접 Excel 병합 후 다운로드 (서버 메모리 사용 없음)
-    const report = await _doClientInsert(monthlyFilename, mode, weekLabel);
+    // 서버에서 삽입 처리
+    const res = await fetch('/api/insert-monthly', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ result_key: resultFilename, monthly_filename: monthlyFilename, mode, week_label: weekLabel }),
+    });
+    const json = await res.json();
+    if (!res.ok || json.error) throw new Error(json.error || '삽입 실패');
+    const report = json.report;
 
     renderInsertReport(report);
     document.getElementById('insertReport').style.display = 'block';
-    document.getElementById('btnDownloadMonthly').style.display = 'none'; // 이미 다운로드됨
+    const btn = document.getElementById('btnDownloadMonthly');
+    btn.style.display = 'inline-flex';
+    btn.dataset.filename = monthlyFilename;
 
     const totalAdded = Object.values(report)
       .filter(r => !r.skipped)
       .reduce((s, r) => s + (r.added || 0), 0);
-    showToast(`삽입 완료! ${totalAdded}건 추가 — 파일이 다운로드되었습니다.`, 'success');
+    showToast(`삽입 완료! ${totalAdded}건 추가 — 다운로드 버튼을 눌러 파일을 받으세요.`, 'success');
     document.getElementById('insertReport').scrollIntoView({ behavior: 'smooth' });
 
   } catch (e) {
