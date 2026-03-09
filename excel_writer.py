@@ -436,7 +436,17 @@ def compute_web_stats(final_tabs):
             month_vals = date_series.apply(lambda d: f"{d.month}월" if d else None).dropna()
             if not month_vals.empty:
                 by_month = {str(k): int(v) for k, v in month_vals.value_counts().sort_index().items()}
-                primary_month = month_vals.value_counts().idxmax()
+                # 주차 레이블에서 월 추출 (예: "3월1주" → 3월)
+                if "주차" in df.columns:
+                    import re as _re
+                    def _week_month(w):
+                        m = _re.search(r'(\d+)월', str(w))
+                        return int(m.group(1)) if m else None
+                    week_months = df["주차"].dropna().apply(_week_month).dropna()
+                    if not week_months.empty:
+                        primary_month = f"{int(week_months.mode()[0])}월"
+                if primary_month is None:
+                    primary_month = month_vals.value_counts().idxmax()
 
         total_primary = 0
         if primary_month and date_series is not None:
