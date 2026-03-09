@@ -363,41 +363,46 @@ function downloadFile(encoded) {
 }
 
 // ─── 확정된 주차 현황 ─────────────────────────────────
+let confirmedWeeksData = [];
+
 function loadConfirmedWeeksStats() {
   fetch('/api/confirmed-weeks-stats')
     .then(r => r.json())
     .then(data => {
       if (!data.ok || !data.weeks || data.weeks.length === 0) return;
-      renderConfirmedWeeks(data.weeks);
+      confirmedWeeksData = data.weeks;
+
+      // 드롭다운 채우기 (최신순)
+      const sel = document.getElementById('confirmedWeekSel');
+      sel.innerHTML = [...data.weeks].reverse().map((w, i) => {
+        // "2026년 03월일자별장애현황.xlsx" → "2026년 03월"
+        const ym = w.monthly_filename.match(/\d{4}년\s*\d{2}월/)?.[0] || '';
+        return `<option value="${data.weeks.length - 1 - i}">${w.week_label}${ym ? ' (' + ym + ')' : ''}</option>`;
+      }).join('');
+
+      document.getElementById('confirmedWeeksSection').style.display = '';
+      renderConfirmedWeekDetail();
     })
     .catch(e => console.error('confirmed-weeks-stats 오류:', e));
 }
 
-function renderConfirmedWeeks(weeks) {
-  const section = document.getElementById('confirmedWeeksSection');
-  const head = document.getElementById('confirmedWeeksHead');
-  const body = document.getElementById('confirmedWeeksBody');
-  if (!section || !head || !body) return;
+function renderConfirmedWeekDetail() {
+  if (!confirmedWeeksData.length) return;
+  const idx = parseInt(document.getElementById('confirmedWeekSel').value || '0');
+  const week = confirmedWeeksData[idx];
+  if (!week) return;
 
-  // 등장하는 탭 목록 (TAB_ORDER 순서 유지)
-  const usedTabs = TAB_ORDER.filter(t => weeks.some(w => (w.tab_counts[t] || 0) > 0));
-
-  head.innerHTML =
-    '<tr><th>주차</th><th>합계</th>' +
-    usedTabs.map(t => `<th><span class="tab-label-analysis ${getTabClass(t)}" style="font-size:11px;padding:3px 7px">${t}</span></th>`).join('') +
-    '</tr>';
-
-  body.innerHTML = weeks.map(w => {
-    const tabCells = usedTabs.map(t => {
-      const cnt = w.tab_counts[t] || 0;
-      return `<td>${cnt > 0 ? cnt + '건' : '-'}</td>`;
-    }).join('');
+  const tbody = document.getElementById('confirmedWeekBody');
+  tbody.innerHTML = TAB_ORDER.map(tab => {
+    const cnt = week.tab_counts[tab] || 0;
+    if (cnt === 0) return '';
+    const cls = getTabClass(tab);
+    const top3 = week.tab_top3?.[tab] || '-';
     return `<tr>
-      <td style="text-align:left;font-weight:700">${w.week_label}</td>
-      <td style="font-weight:800;color:var(--primary)">${w.total}건</td>
-      ${tabCells}
+      <td><span class="tab-label ${cls}">${tab}</span></td>
+      <td class="count-cell">${cnt}</td>
+      <td class="period-cell"><span class="week-badge">${week.week_label} <b>${cnt}</b>건</span></td>
+      <td class="top3-cell">${top3}</td>
     </tr>`;
   }).join('');
-
-  section.style.display = '';
 }

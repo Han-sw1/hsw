@@ -213,11 +213,21 @@
 
         <!-- 확정된 주차 현황 -->
         <div class="chart-box full-width" id="confirmedWeeksSection" style="display:none">
-          <div class="chart-title" style="margin-bottom:12px">&#128274; 확정된 주차 현황</div>
-          <div style="overflow-x:auto">
-            <table class="stats-month-table" id="confirmedWeeksTable">
-              <thead id="confirmedWeeksHead"></thead>
-              <tbody id="confirmedWeeksBody"></tbody>
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+            <div class="chart-title" style="margin:0">&#128274; 확정된 주차 현황</div>
+            <select class="month-sel" id="confirmedWeekSel" onchange="renderConfirmedWeekDetail()"></select>
+          </div>
+          <div class="stats-table-wrap">
+            <table class="stats-table" id="confirmedWeekTable">
+              <thead>
+                <tr>
+                  <th>지역 / 단말</th>
+                  <th>건수</th>
+                  <th>주차</th>
+                  <th>TOP3 주요 장애유형</th>
+                </tr>
+              </thead>
+              <tbody id="confirmedWeekBody"></tbody>
             </table>
           </div>
         </div>
