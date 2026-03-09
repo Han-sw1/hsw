@@ -377,7 +377,8 @@ function loadConfirmedWeeksStats() {
       sel.innerHTML = [...data.weeks].reverse().map((w, i) => {
         // "2026년 03월일자별장애현황.xlsx" → "2026년 03월"
         const ym = w.monthly_filename.match(/\d{4}년\s*\d{2}월/)?.[0] || '';
-        return `<option value="${data.weeks.length - 1 - i}">${w.week_label}${ym ? ' (' + ym + ')' : ''}</option>`;
+        const lock = w.confirmed ? ' 🔒' : '';
+        return `<option value="${data.weeks.length - 1 - i}">${w.week_label}${ym ? ' (' + ym + ')' : ''}${lock}</option>`;
       }).join('');
 
       document.getElementById('confirmedWeeksSection').style.display = '';

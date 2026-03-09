@@ -447,68 +447,98 @@ def delete_weekly_route():
         return jsonify({"error": str(e), "detail": traceback.format_exc()}), 500
 
 
+def _week_sort_key(week_label):
+    """'3월1주' → (3, 1) 정렬키."""
+    import re as _re
+    m = _re.search(r'(\d+)월(\d+)주', str(week_label))
+    return (int(m.group(1)), int(m.group(2))) if m else (99, 99)
+
+
 @app.route("/api/confirmed-weeks-stats")
 def confirmed_weeks_stats():
-    """확정된 주차별 탭별 건수·TOP3 반환."""
+    """모든 월간 파일의 전체 주차별 탭별 건수·TOP3 반환 (확정 여부 포함)."""
     try:
-        cw = load_confirmed_weeks()
-        if not cw:
-            return jsonify({"ok": True, "weeks": []})
-
         from collections import Counter
-        from excel_writer import get_monthly_file_path, TAB_TO_RAWSHEET
+        from excel_writer import list_monthly_files, get_monthly_file_path, TAB_TO_RAWSHEET
         from openpyxl import load_workbook
 
+        cw = load_confirmed_weeks()
         result = []
-        for monthly_filename, week_list in sorted(cw.items()):
+
+        for monthly_filename in sorted(list_monthly_files()):
             file_path = get_monthly_file_path(monthly_filename)
             if not os.path.exists(file_path):
                 continue
+            confirmed_for_file = cw.get(monthly_filename, [])
+
             try:
                 wb = load_workbook(file_path, read_only=True, data_only=True)
-                for week_label in sorted(week_list):
+
+                # 각 탭 시트를 한 번씩만 읽어 캐시
+                sheet_cache = {}
+                for tab_name, sheet_name in TAB_TO_RAWSHEET.items():
+                    if sheet_name not in wb.sheetnames:
+                        continue
+                    ws = wb[sheet_name]
+                    rows = list(ws.values)
+                    if len(rows) < 2:
+                        continue
+                    headers = [str(h).strip() if h is not None else "" for h in rows[0]]
+                    week_col = next((i for i, h in enumerate(headers) if h == "주차"), None)
+                    if week_col is None:
+                        continue
+                    is_regional = not any(k in tab_name for k in ["B800", "B700", "B710", "B620"])
+                    fault_name = "단말기접수유형" if is_regional else "접수오류유형"
+                    fault_col = next((i for i, h in enumerate(headers) if h == fault_name), None)
+                    sheet_cache[tab_name] = {
+                        "rows": rows[1:],
+                        "week_col": week_col,
+                        "fault_col": fault_col,
+                    }
+
+                wb.close()
+                if not sheet_cache:
+                    continue
+
+                # 파일 내 모든 주차 수집 (str 변환 후 비교)
+                all_weeks = set()
+                for sd in sheet_cache.values():
+                    wc = sd["week_col"]
+                    for row in sd["rows"]:
+                        if len(row) > wc and row[wc] is not None:
+                            v = str(row[wc]).strip()
+                            if v and v not in ("None", "nan", ""):
+                                all_weeks.add(v)
+
+                for week_label in sorted(all_weeks, key=_week_sort_key):
                     tab_counts = {}
                     tab_top3 = {}
-                    for tab_name, sheet_name in TAB_TO_RAWSHEET.items():
-                        if sheet_name not in wb.sheetnames:
+                    for tab_name, sd in sheet_cache.items():
+                        wc = sd["week_col"]
+                        # str 변환 후 비교 (openpyxl 셀값 타입 불일치 방지)
+                        week_rows = [r for r in sd["rows"] if len(r) > wc and str(r[wc]).strip() == week_label]
+                        if not week_rows:
                             continue
-                        ws = wb[sheet_name]
-                        rows = list(ws.values)
-                        if not rows:
-                            continue
-                        headers = list(rows[0])
-                        week_col = next(
-                            (i for i, h in enumerate(headers) if h and str(h).strip() == "주차"),
-                            None,
-                        )
-                        if week_col is None:
-                            continue
-                        # 서울/공항은 "접수오류유형", 지역은 "단말기접수유형"
-                        is_regional = not any(k in tab_name for k in ["B800", "B700", "B710", "B620"])
-                        fault_col_name = "단말기접수유형" if is_regional else "접수오류유형"
-                        fault_col = next(
-                            (i for i, h in enumerate(headers) if h and str(h).strip() == fault_col_name),
-                            None,
-                        )
-                        week_rows = [row for row in rows[1:] if len(row) > week_col and row[week_col] == week_label]
-                        count = len(week_rows)
-                        if count > 0:
-                            tab_counts[tab_name] = count
-                            if fault_col is not None:
-                                fault_vals = [
-                                    str(row[fault_col]).strip() for row in week_rows
-                                    if len(row) > fault_col and row[fault_col] not in (None, "", "nan", "None", "NaN")
-                                ]
-                                if fault_vals:
-                                    tab_top3[tab_name] = "/".join(v for v, _ in Counter(fault_vals).most_common(3))
-                    result.append({
-                        "week_label": week_label,
-                        "monthly_filename": monthly_filename,
-                        "tab_counts": tab_counts,
-                        "tab_top3": tab_top3,
-                        "total": sum(tab_counts.values()),
-                    })
-                wb.close()
+                        tab_counts[tab_name] = len(week_rows)
+                        fc = sd["fault_col"]
+                        if fc is not None:
+                            fault_vals = [
+                                str(r[fc]).strip() for r in week_rows
+                                if len(r) > fc and r[fc] not in (None, "", "nan", "None", "NaN")
+                            ]
+                            if fault_vals:
+                                tab_top3[tab_name] = "/".join(v for v, _ in Counter(fault_vals).most_common(3))
+
+                    if tab_counts:
+                        result.append({
+                            "week_label": week_label,
+                            "monthly_filename": monthly_filename,
+                            "tab_counts": tab_counts,
+                            "tab_top3": tab_top3,
+                            "total": sum(tab_counts.values()),
+                            "confirmed": week_label in confirmed_for_file,
+                        })
+
             except Exception:
                 continue
 
