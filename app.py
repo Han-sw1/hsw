@@ -618,9 +618,11 @@ def analysis_data():
                 rates.append(tab_data.get("fault_rate"))
             chart_datasets[tab] = {"counts": counts, "rates": rates}
 
-        # 각 월별 확정 여부 플래그 추가
+        # 각 월별 확정 여부 플래그 추가 + 불필요한 대용량 데이터 제거
         for k, v in all_stats.items():
             v["confirmed"] = _is_confirmed(v.get("filename", ""))
+            for tab_data in v.get("tabs", {}).values():
+                tab_data.pop("by_week_faults", None)  # 분석 대시보드에서 불필요
 
         return jsonify({
             "ok": True,
