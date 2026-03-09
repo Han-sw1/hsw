@@ -147,7 +147,10 @@ def _get_sheet_xml_map(file_path):
             name = sheet.get('name')
             rid = sheet.get(f'{{{ns_r}}}id')
             target = rid_to_target.get(rid, '')
-            sheet_map[name] = f'xl/{target}'
+            if target.startswith('/'):
+                sheet_map[name] = target.lstrip('/')
+            else:
+                sheet_map[name] = f'xl/{target}'
     return sheet_map
 
 
