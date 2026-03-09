@@ -3,7 +3,8 @@ import os
 import pandas as pd
 from openpyxl import load_workbook
 
-MONTHLY_FILES_DIR = os.path.join(os.path.dirname(__file__), "monthly_files")
+_BASE_DIR = os.environ.get("DATA_DIR", os.path.dirname(__file__))
+MONTHLY_FILES_DIR = os.path.join(_BASE_DIR, "monthly_files")
 
 # 처리기 탭명 → 월간 파일 숨김 시트명
 TAB_TO_RAWSHEET = {

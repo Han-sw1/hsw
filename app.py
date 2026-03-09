@@ -1,5 +1,8 @@
 from flask import Flask, render_template, request, jsonify, send_file
 import os
+
+_BASE_DIR = os.environ.get("DATA_DIR", os.path.dirname(__file__))
+_RESULTS_DIR = os.path.join(_BASE_DIR, "results")
 import tempfile
 import json
 import pickle
@@ -179,7 +182,7 @@ def process():
 
         excel_bytes = tabs_to_excel_bytes(final_tabs)
 
-        result_dir = os.path.join(os.path.dirname(__file__), "results")
+        result_dir = _RESULTS_DIR
         os.makedirs(result_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         result_filename = f"장애목록_처리결과_{timestamp}.xlsx"
@@ -289,7 +292,7 @@ def insert_monthly():
         if week_label in cw.get(monthly_filename, []):
             return jsonify({"error": f"'{week_label}'은 확정된 주차입니다. 삽입이 불가합니다."}), 403
 
-    result_dir = os.path.join(os.path.dirname(__file__), "results")
+    result_dir = _RESULTS_DIR
     pkl_path = os.path.join(result_dir, result_key + ".pkl")
 
     if not os.path.exists(pkl_path):
@@ -322,7 +325,7 @@ def insert_monthly():
 def get_result_data(result_key):
     """처리된 탭 데이터를 JSON으로 반환 (클라이언트 사이드 삽입용)."""
     import gc
-    result_dir = os.path.join(os.path.dirname(__file__), "results")
+    result_dir = _RESULTS_DIR
     pkl_path = os.path.join(result_dir, result_key + ".pkl")
     if not os.path.exists(pkl_path):
         return jsonify({"error": "처리된 데이터가 없습니다. 다시 처리를 실행해주세요."}), 404
@@ -471,7 +474,7 @@ def analysis_comments():
 
 @app.route("/api/download/<filename>")
 def download(filename):
-    result_dir = os.path.join(os.path.dirname(__file__), "results")
+    result_dir = _RESULTS_DIR
     path = os.path.join(result_dir, filename)
     if not os.path.exists(path):
         return jsonify({"error": "파일 없음"}), 404
