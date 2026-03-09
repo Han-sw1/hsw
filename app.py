@@ -474,6 +474,11 @@ def confirmed_weeks_stats():
             try:
                 wb = load_workbook(file_path, read_only=True, data_only=True)
 
+                # 파일 월 추출 (주차 레이블 필터링용)
+                import re as _re
+                _fm = _re.search(r'(\d{1,2})월', monthly_filename)
+                file_month = int(_fm.group(1)) if _fm else None
+
                 # 각 탭 시트를 한 번씩만 읽어 캐시
                 sheet_cache = {}
                 for tab_name, sheet_name in TAB_TO_RAWSHEET.items():
@@ -484,14 +489,24 @@ def confirmed_weeks_stats():
                     if len(rows) < 2:
                         continue
                     headers = [str(h).strip() if h is not None else "" for h in rows[0]]
+                    max_cols = len(headers)
                     week_col = next((i for i, h in enumerate(headers) if h == "주차"), None)
                     if week_col is None:
                         continue
                     is_regional = not any(k in tab_name for k in ["B800", "B700", "B710", "B620"])
                     fault_name = "단말기접수유형" if is_regional else "접수오류유형"
                     fault_col = next((i for i, h in enumerate(headers) if h == fault_name), None)
+                    # 행 길이를 헤더 길이로 패딩 (openpyxl read_only에서 행이 잘릴 수 있음)
+                    padded = []
+                    for row in rows[1:]:
+                        if not any(v is not None for v in row):
+                            continue
+                        r = list(row)
+                        if len(r) < max_cols:
+                            r += [None] * (max_cols - len(r))
+                        padded.append(r)
                     sheet_cache[tab_name] = {
-                        "rows": rows[1:],
+                        "rows": padded,
                         "week_col": week_col,
                         "fault_col": fault_col,
                     }
@@ -500,23 +515,27 @@ def confirmed_weeks_stats():
                 if not sheet_cache:
                     continue
 
-                # 파일 내 모든 주차 수집 (str 변환 후 비교)
+                # 파일 내 모든 주차 수집
                 all_weeks = set()
                 for sd in sheet_cache.values():
                     wc = sd["week_col"]
                     for row in sd["rows"]:
-                        if len(row) > wc and row[wc] is not None:
-                            v = str(row[wc]).strip()
-                            if v and v not in ("None", "nan", ""):
-                                all_weeks.add(v)
+                        v = str(row[wc]).strip() if row[wc] is not None else ""
+                        if v and v not in ("None", "nan", ""):
+                            all_weeks.add(v)
 
                 for week_label in sorted(all_weeks, key=_week_sort_key):
+                    # 파일 월과 주차 레이블 월이 다르면 제외 (e.g. 2월 파일의 "3월1주" 제외)
+                    if file_month is not None:
+                        wk_m = _re.search(r'(\d+)월', week_label)
+                        if wk_m and int(wk_m.group(1)) != file_month:
+                            continue
+
                     tab_counts = {}
                     tab_top3 = {}
                     for tab_name, sd in sheet_cache.items():
                         wc = sd["week_col"]
-                        # str 변환 후 비교 (openpyxl 셀값 타입 불일치 방지)
-                        week_rows = [r for r in sd["rows"] if len(r) > wc and str(r[wc]).strip() == week_label]
+                        week_rows = [r for r in sd["rows"] if str(r[wc]).strip() == week_label]
                         if not week_rows:
                             continue
                         tab_counts[tab_name] = len(week_rows)
@@ -524,7 +543,7 @@ def confirmed_weeks_stats():
                         if fc is not None:
                             fault_vals = [
                                 str(r[fc]).strip() for r in week_rows
-                                if len(r) > fc and r[fc] not in (None, "", "nan", "None", "NaN")
+                                if r[fc] not in (None, "", "nan", "None", "NaN")
                             ]
                             if fault_vals:
                                 tab_top3[tab_name] = "/".join(v for v, _ in Counter(fault_vals).most_common(3))
