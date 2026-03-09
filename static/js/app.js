@@ -678,7 +678,6 @@ function updateWeekActionUI() {
   const confirmed = isWeekConfirmed(filename, weekLabel);
   const badge = document.getElementById('weekStatusBadge');
   const btnConfirm = document.getElementById('btnConfirmWeek');
-  const btnUnconfirm = document.getElementById('btnUnconfirmWeek');
   const btnDelete = document.getElementById('btnDeleteWeek');
   const btnInsert = document.getElementById('btnInsert');
 
@@ -686,14 +685,12 @@ function updateWeekActionUI() {
     badge.textContent = '🔒 확정됨';
     badge.className = 'week-badge week-badge-confirmed';
     btnConfirm.style.display = 'none';
-    btnUnconfirm.style.display = 'inline-flex';
     btnDelete.style.display = 'none';
     btnInsert.disabled = true;
   } else {
     badge.textContent = '🟡 미확정';
     badge.className = 'week-badge week-badge-pending';
     btnConfirm.style.display = 'inline-flex';
-    btnUnconfirm.style.display = 'none';
     btnDelete.style.display = 'inline-flex';
     // 파일 자체가 확정인지 다시 체크
     const info = monthlyFilesInfo.find(f => f.name === filename);
@@ -728,7 +725,9 @@ document.getElementById('btnConfirmWeek').addEventListener('click', async () => 
   const filename = document.getElementById('monthlyFileSelect').value;
   const weekLabel = document.getElementById('weekSelect').value;
   if (!filename || !weekLabel) return;
-  if (!confirm(`[${weekLabel}] 을 확정합니다.\n확정 후에는 삽입·삭제가 불가합니다. 계속하시겠습니까?`)) return;
+  const pw = prompt(`[${weekLabel}] 확정하려면 비밀번호를 입력하세요.\n확정 후에는 삽입·삭제가 불가하며 취소할 수 없습니다.`);
+  if (pw === null) return;
+  if (pw !== '951009') { showToast('비밀번호가 올바르지 않습니다.', 'error'); return; }
   try {
     const res = await fetch('/api/confirm-week', {
       method: 'POST',
@@ -749,8 +748,10 @@ document.getElementById('btnConfirmWeek').addEventListener('click', async () => 
   }
 });
 
-// ─── 확정 취소 버튼 ──────────────────────────────────
-document.getElementById('btnUnconfirmWeek').addEventListener('click', async () => {
+// ─── 확정 취소 버튼 (비활성화) ───────────────────────
+// 확정 취소 기능 제거됨 - 확정은 영구적
+/*
+document.getElementById('btnUnconfirmWeek')?.addEventListener('click', async () => {
   const filename = document.getElementById('monthlyFileSelect').value;
   const weekLabel = document.getElementById('weekSelect').value;
   if (!filename || !weekLabel) return;
@@ -775,6 +776,7 @@ document.getElementById('btnUnconfirmWeek').addEventListener('click', async () =
     showToast('서버 오류: ' + e.message, 'error');
   }
 });
+*/
 
 // ─── 주차 데이터 삭제 버튼 ───────────────────────────
 document.getElementById('btnDeleteWeek').addEventListener('click', async () => {
