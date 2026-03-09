@@ -426,6 +426,59 @@ def delete_weekly_route():
         return jsonify({"error": str(e), "detail": traceback.format_exc()}), 500
 
 
+@app.route("/api/confirmed-weeks-stats")
+def confirmed_weeks_stats():
+    """확정된 주차별 탭별 건수 반환."""
+    try:
+        cw = load_confirmed_weeks()
+        if not cw:
+            return jsonify({"ok": True, "weeks": []})
+
+        from excel_writer import get_monthly_file_path, TAB_TO_RAWSHEET
+        from openpyxl import load_workbook
+
+        result = []
+        for monthly_filename, week_list in sorted(cw.items()):
+            file_path = get_monthly_file_path(monthly_filename)
+            if not os.path.exists(file_path):
+                continue
+            try:
+                wb = load_workbook(file_path, read_only=True, data_only=True)
+                for week_label in sorted(week_list):
+                    tab_counts = {}
+                    for tab_name, sheet_name in TAB_TO_RAWSHEET.items():
+                        if sheet_name not in wb.sheetnames:
+                            continue
+                        ws = wb[sheet_name]
+                        rows = list(ws.values)
+                        if not rows:
+                            continue
+                        headers = list(rows[0])
+                        week_col = next(
+                            (i for i, h in enumerate(headers) if h and str(h).strip() == "주차"),
+                            None,
+                        )
+                        if week_col is None:
+                            continue
+                        count = sum(1 for row in rows[1:] if len(row) > week_col and row[week_col] == week_label)
+                        if count > 0:
+                            tab_counts[tab_name] = count
+                    result.append({
+                        "week_label": week_label,
+                        "monthly_filename": monthly_filename,
+                        "tab_counts": tab_counts,
+                        "total": sum(tab_counts.values()),
+                    })
+                wb.close()
+            except Exception:
+                continue
+
+        return jsonify({"ok": True, "weeks": result})
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "detail": traceback.format_exc()}), 500
+
+
 @app.route("/analysis")
 def analysis_page():
     return render_template("analysis.html")

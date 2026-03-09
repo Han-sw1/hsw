@@ -42,6 +42,7 @@ window.addEventListener('DOMContentLoaded', () => {
       try { renderDownloads(data.all_stats || {}); } catch(e) { console.error('다운로드 오류:', e); }
       try { initCompareSelects(data.labels || []); } catch(e) { console.error('셀렉트 오류:', e); }
       try { renderCompare(); } catch(e) { console.error('비교 오류:', e); }
+      try { loadConfirmedWeeksStats(); } catch(e) { console.error('확정 주차 오류:', e); }
 
       // 차트는 마지막에 (실패해도 나머지는 보임)
       try { renderCharts(); } catch(e) {
@@ -359,4 +360,44 @@ function renderDownloads(all_stats) {
 
 function downloadFile(encoded) {
   window.location.href = '/api/download-monthly/' + encoded;
+}
+
+// ─── 확정된 주차 현황 ─────────────────────────────────
+function loadConfirmedWeeksStats() {
+  fetch('/api/confirmed-weeks-stats')
+    .then(r => r.json())
+    .then(data => {
+      if (!data.ok || !data.weeks || data.weeks.length === 0) return;
+      renderConfirmedWeeks(data.weeks);
+    })
+    .catch(e => console.error('confirmed-weeks-stats 오류:', e));
+}
+
+function renderConfirmedWeeks(weeks) {
+  const section = document.getElementById('confirmedWeeksSection');
+  const head = document.getElementById('confirmedWeeksHead');
+  const body = document.getElementById('confirmedWeeksBody');
+  if (!section || !head || !body) return;
+
+  // 등장하는 탭 목록 (TAB_ORDER 순서 유지)
+  const usedTabs = TAB_ORDER.filter(t => weeks.some(w => (w.tab_counts[t] || 0) > 0));
+
+  head.innerHTML =
+    '<tr><th>주차</th><th>합계</th>' +
+    usedTabs.map(t => `<th><span class="tab-label-analysis ${getTabClass(t)}" style="font-size:11px;padding:3px 7px">${t}</span></th>`).join('') +
+    '</tr>';
+
+  body.innerHTML = weeks.map(w => {
+    const tabCells = usedTabs.map(t => {
+      const cnt = w.tab_counts[t] || 0;
+      return `<td>${cnt > 0 ? cnt + '건' : '-'}</td>`;
+    }).join('');
+    return `<tr>
+      <td style="text-align:left;font-weight:700">${w.week_label}</td>
+      <td style="font-weight:800;color:var(--primary)">${w.total}건</td>
+      ${tabCells}
+    </tr>`;
+  }).join('');
+
+  section.style.display = '';
 }
