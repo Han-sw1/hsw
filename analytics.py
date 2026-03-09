@@ -40,6 +40,26 @@ _CACHE_BASE = os.environ.get("DATA_DIR", os.path.dirname(__file__))
 CACHE_PATH = os.path.join(_CACHE_BASE, "analytics_cache.json")
 
 
+def _date_to_week_label(d):
+    """날짜 → '3월1주' 형식 주차 레이블 (processor.get_week_label과 동일)."""
+    from datetime import timedelta, date as _date, datetime as _datetime
+    try:
+        if isinstance(d, _datetime):
+            d = d.date()
+        days_to_wed = (2 - d.weekday()) % 7
+        week_end_wed = d + timedelta(days=days_to_wed)
+        week_start_thu = week_end_wed - timedelta(days=6)
+        month = week_end_wed.month
+        year = week_end_wed.year
+        first_day = _date(year, month, 1)
+        first_wednesday = first_day + timedelta(days=(2 - first_day.weekday()) % 7)
+        first_thursday = first_wednesday - timedelta(days=6)
+        week_num = (week_start_thu - first_thursday).days // 7 + 1
+        return f"{month}월{week_num}주"
+    except Exception:
+        return ""
+
+
 def _parse_ym(filename):
     m = re.search(r'(\d{4})년\s*(\d{2})월', filename)
     return (int(m.group(1)), int(m.group(2))) if m else (None, None)
@@ -157,6 +177,17 @@ def read_monthly_stats(filename):
                     if week_pos is not None and week_pos < len(row) and row[week_pos]:
                         wk = str(row[week_pos])
                         by_week[wk] = by_week.get(wk, 0) + 1
+                    elif week_pos is None and date_pos is not None and date_pos < len(row):
+                        # 주차 컬럼 없으면 날짜에서 주차 계산
+                        dval = row[date_pos]
+                        if dval is not None:
+                            try:
+                                d2 = dval if isinstance(dval, date_type) else pd.to_datetime(str(dval)).date()
+                                wk = _date_to_week_label(d2)
+                                if wk:
+                                    by_week[wk] = by_week.get(wk, 0) + 1
+                            except Exception:
+                                pass
             except Exception:
                 count = 0
                 by_week = {}
