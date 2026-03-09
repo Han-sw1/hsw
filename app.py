@@ -14,6 +14,11 @@ if _BASE_DIR != os.path.dirname(__file__):
         _dst = os.path.join(_VOLUME_MONTHLY, _f)
         if not os.path.exists(_dst):
             shutil.copy2(os.path.join(_REPO_MONTHLY, _f), _dst)
+    # confirmed_weeks.json: repo에 있으면 volume으로 1회 복사 (이후엔 volume 우선)
+    _repo_cw = os.path.join(os.path.dirname(__file__), "confirmed_weeks.json")
+    _vol_cw = os.path.join(_BASE_DIR, "confirmed_weeks.json")
+    if os.path.exists(_repo_cw) and not os.path.exists(_vol_cw):
+        shutil.copy2(_repo_cw, _vol_cw)
 import tempfile
 import json
 import pickle
@@ -31,7 +36,7 @@ app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB
 
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 REFERENCE_DIR = os.path.join(os.path.dirname(__file__), "reference_files")
-CONFIRMED_WEEKS_FILE = os.path.join(os.path.dirname(__file__), "confirmed_weeks.json")
+CONFIRMED_WEEKS_FILE = os.path.join(_BASE_DIR, "confirmed_weeks.json")
 
 DEFAULT_CONFIG = {
     "criteria_path": "",
