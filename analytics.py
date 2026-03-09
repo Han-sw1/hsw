@@ -127,7 +127,7 @@ def _count_month_records(headers, rows, year, month):
 
 
 def read_monthly_stats(filename):
-    """월간 파일에서 탭별 {count, 운영수량, fault_rate, year, month} 반환."""
+    """월간 파일에서 탭별 {count, 운영수량, fault_rate, by_week, by_week_top3} 반환."""
     path = get_monthly_file_path(filename)
     year, month = _parse_ym(filename)
     if not year or not os.path.exists(path):
@@ -137,16 +137,20 @@ def read_monthly_stats(filename):
     try:
         wb = load_workbook(path, data_only=True, read_only=True)
 
-        # 로우데이터 시트에서 건수 카운트 + 주차별 건수 (단일 패스)
+        # 로우데이터 시트에서 건수 카운트 + 주차별 건수 + TOP3 (단일 패스)
         for tab_name in TAB_ORDER:
             raw_sheet = TAB_TO_RAWSHEET.get(tab_name)
             if not raw_sheet or raw_sheet not in wb.sheetnames:
                 continue
+            is_regional = not any(k in tab_name for k in ["B800", "B700", "B710", "B620"])
+            fault_col_name = "단말기접수유형" if is_regional else "접수오류유형"
             count = 0
             by_week = {}
+            by_week_faults = {}  # {week: {fault_type: count}}
             try:
                 date_pos = None
                 week_pos = None
+                fault_pos = None
                 for i, row in enumerate(wb[raw_sheet].iter_rows(values_only=True)):
                     if i == 0:
                         headers = list(row)
@@ -155,47 +159,64 @@ def read_monthly_stats(filename):
                                 date_pos = j
                             if h == "주차":
                                 week_pos = j
+                            if h == fault_col_name:
+                                fault_pos = j
                         if date_pos is None:
                             occ = [j for j, h in enumerate(headers) if h == "장애접수일시"]
                             date_pos = occ[1] if len(occ) >= 2 else (occ[0] if occ else None)
                         continue
                     if not any(v is not None for v in row):
                         continue
-                    # 월 건수
-                    if date_pos is None or date_pos >= len(row):
+                    # 날짜 파싱
+                    d = None
+                    if date_pos is not None and date_pos < len(row) and row[date_pos] is not None:
+                        try:
+                            val = row[date_pos]
+                            d = val if isinstance(val, date_type) else pd.to_datetime(str(val)).date()
+                        except Exception:
+                            pass
+                    # 월 건수 + 날짜 필터 (다른 달 데이터 제외)
+                    if d is None:
+                        if date_pos is None:
+                            count += 1
+                        else:
+                            continue  # 날짜 파싱 실패 → 제외
+                    elif d.year == year and d.month == month:
                         count += 1
                     else:
-                        val = row[date_pos]
-                        if val is not None:
-                            try:
-                                d = val if isinstance(val, date_type) else pd.to_datetime(str(val)).date()
-                                if d.year == year and d.month == month:
-                                    count += 1
-                            except Exception:
-                                pass
-                    # 주차별 건수
+                        continue  # 다른 달 데이터 → by_week에도 포함하지 않음
+                    # 주차 레이블 결정
+                    wk = None
                     if week_pos is not None and week_pos < len(row) and row[week_pos]:
                         wk = str(row[week_pos])
+                    elif d is not None:
+                        wk = _date_to_week_label(d)
+                    if wk:
                         by_week[wk] = by_week.get(wk, 0) + 1
-                    elif week_pos is None and date_pos is not None and date_pos < len(row):
-                        # 주차 컬럼 없으면 날짜에서 주차 계산
-                        dval = row[date_pos]
-                        if dval is not None:
-                            try:
-                                d2 = dval if isinstance(dval, date_type) else pd.to_datetime(str(dval)).date()
-                                wk = _date_to_week_label(d2)
-                                if wk:
-                                    by_week[wk] = by_week.get(wk, 0) + 1
-                            except Exception:
-                                pass
+                        # TOP3 장애유형 집계
+                        if fault_pos is not None and fault_pos < len(row):
+                            fv = row[fault_pos]
+                            if fv not in (None, "", "nan", "None", "NaN"):
+                                fv = str(fv).strip()
+                                if fv and fv not in ("nan", "None", "NaN"):
+                                    wk_faults = by_week_faults.setdefault(wk, {})
+                                    wk_faults[fv] = wk_faults.get(fv, 0) + 1
             except Exception:
                 count = 0
                 by_week = {}
+                by_week_faults = {}
+
+            # 주차별 TOP3 문자열 생성
+            by_week_top3 = {
+                wk: "/".join(sorted(fc, key=fc.get, reverse=True)[:3])
+                for wk, fc in by_week_faults.items()
+            }
 
             result[tab_name] = {
                 "year": year, "month": month,
                 "count": count,
                 "by_week": by_week,
+                "by_week_top3": by_week_top3,
                 "운영수량": None,
                 "fault_rate": None,
             }

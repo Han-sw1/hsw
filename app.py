@@ -454,13 +454,38 @@ def _week_sort_key(week_label):
     return (int(m.group(1)), int(m.group(2))) if m else (99, 99)
 
 
+_CW_STATS_CACHE_PATH = os.path.join(_BASE_DIR, "cw_stats_cache.json")
+
+
+def _cw_stats_cache_valid():
+    """cw_stats_cache.json이 모든 월간 파일 + confirmed_weeks.json보다 최신인지 확인."""
+    if not os.path.exists(_CW_STATS_CACHE_PATH):
+        return False
+    ct = os.path.getmtime(_CW_STATS_CACHE_PATH)
+    from excel_writer import list_monthly_files, get_monthly_file_path
+    for fn in list_monthly_files():
+        if os.path.getmtime(get_monthly_file_path(fn)) > ct:
+            return False
+    if os.path.exists(CONFIRMED_WEEKS_FILE) and os.path.getmtime(CONFIRMED_WEEKS_FILE) > ct:
+        return False
+    return True
+
+
 @app.route("/api/confirmed-weeks-stats")
 def confirmed_weeks_stats():
-    """모든 월간 파일의 전체 주차별 탭별 건수 반환 (확정 여부 포함)."""
+    """모든 월간 파일의 전체 주차별 탭별 건수+TOP3 반환 (확정 여부 포함). 파일 캐시 사용."""
     try:
         import re as _re
         from excel_writer import list_monthly_files, get_monthly_file_path
         from analytics import read_monthly_stats
+
+        # 캐시 유효하면 즉시 반환
+        if _cw_stats_cache_valid():
+            try:
+                with open(_CW_STATS_CACHE_PATH, "r", encoding="utf-8") as f:
+                    return jsonify(json.load(f))
+            except Exception:
+                pass
 
         cw = load_confirmed_weeks()
         result = []
@@ -501,17 +526,32 @@ def confirmed_weeks_stats():
                 if not tab_counts:
                     continue
 
+                # 탭별 TOP3 (주차 기준)
+                tab_top3 = {
+                    tab: td["by_week_top3"][week_label]
+                    for tab, td in stats.items()
+                    if td.get("by_week_top3", {}).get(week_label)
+                }
+
                 is_confirmed = _is_confirmed(monthly_filename) or (week_label in confirmed_for_file)
                 display_label = f"{year_short}년 {week_label}" if year_short else week_label
                 result.append({
                     "week_label": display_label,
                     "tab_counts": tab_counts,
-                    "tab_top3": {},
+                    "tab_top3": tab_top3,
                     "total": sum(tab_counts.values()),
                     "confirmed": is_confirmed,
                 })
 
-        return jsonify({"ok": True, "weeks": result})
+        payload = {"ok": True, "weeks": result}
+        # 캐시 저장
+        try:
+            with open(_CW_STATS_CACHE_PATH, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, default=str)
+        except Exception:
+            pass
+
+        return jsonify(payload)
     except Exception as e:
         import traceback
         return jsonify({"error": str(e), "detail": traceback.format_exc()}), 500
