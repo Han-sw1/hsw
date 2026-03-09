@@ -275,6 +275,14 @@ def insert_into_monthly(final_tabs, monthly_filename, mode="daily", week_label=N
             "total": len(merged),
         }
 
+    # 열 너비 보정: bestFit 또는 너비 미설정 컬럼에 기본값 적용
+    for ws in wb.worksheets:
+        for col_letter, col_dim in ws.column_dimensions.items():
+            if col_dim.bestFit or col_dim.width is None or col_dim.width < 2:
+                col_dim.bestFit = False
+                col_dim.customWidth = True
+                col_dim.width = 8
+
     wb.save(file_path)
     del wb
     gc.collect()
