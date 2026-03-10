@@ -5,7 +5,7 @@ import shutil
 _BASE_DIR = os.environ.get("DATA_DIR", os.path.dirname(__file__))
 _RESULTS_DIR = os.path.join(_BASE_DIR, "results")
 
-# Railway Volume 초기화: 월간 파일이 없으면 repo의 monthly_files에서 복사
+# Railway Volume 초기화: 월간 파일 및 rawdata가 없으면 repo에서 복사
 _VOLUME_MONTHLY = os.path.join(_BASE_DIR, "monthly_files")
 _REPO_MONTHLY = os.path.join(os.path.dirname(__file__), "monthly_files")
 if _BASE_DIR != os.path.dirname(__file__):
@@ -14,11 +14,6 @@ if _BASE_DIR != os.path.dirname(__file__):
         _dst = os.path.join(_VOLUME_MONTHLY, _f)
         if not os.path.exists(_dst):
             shutil.copy2(os.path.join(_REPO_MONTHLY, _f), _dst)
-    # confirmed_weeks.json: repo에 있으면 volume으로 1회 복사 (이후엔 volume 우선)
-    _repo_cw = os.path.join(os.path.dirname(__file__), "confirmed_weeks.json")
-    _vol_cw = os.path.join(_BASE_DIR, "confirmed_weeks.json")
-    if os.path.exists(_repo_cw) and not os.path.exists(_vol_cw):
-        shutil.copy2(_repo_cw, _vol_cw)
     # data/ 폴더 (rawdata xlsx): repo → volume 복사
     _repo_data = os.path.join(os.path.dirname(__file__), "data")
     _vol_data = os.path.join(_BASE_DIR, "data")
@@ -44,7 +39,6 @@ import threading
 
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 REFERENCE_DIR = os.path.join(os.path.dirname(__file__), "reference_files")
-CONFIRMED_WEEKS_FILE = os.path.join(_BASE_DIR, "confirmed_weeks.json")
 
 DEFAULT_CONFIG = {
     "criteria_path": "",
@@ -54,13 +48,10 @@ DEFAULT_CONFIG = {
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB
 
-# DB 초기화 및 마이그레이션 (백그라운드)
+# DB 초기화 (백그라운드)
 def _startup_init():
     try:
         _db.init_db()
-        # confirmed_weeks.json → DB 마이그레이션 (1회)
-        _db.migrate_confirmed_weeks_json(CONFIRMED_WEEKS_FILE)
-        # Excel 파일 → DB 마이그레이션 (DB가 비어 있을 때만)
         if _db.is_db_empty():
             _db.migrate_excel_stats()
     except Exception as e:
@@ -91,11 +82,6 @@ def save_config(cfg):
 def load_confirmed_weeks():
     """DB에서 confirmed_weeks 반환."""
     return _db.load_confirmed_weeks()
-
-
-def save_confirmed_weeks(data):
-    """하위 호환용 — import 시에만 사용."""
-    pass
 
 
 def get_reference_paths():
@@ -273,14 +259,6 @@ def process():
             else:
                 ts["운영수량"] = None
                 ts["fault_rate"] = None
-
-        # 최신 stats 저장 (분석 페이지 신규 vs 전월 비교용)
-        try:
-            latest_stats_path = os.path.join(result_dir, "latest_stats.json")
-            with open(latest_stats_path, "w", encoding="utf-8") as f:
-                json.dump(stats, f, ensure_ascii=False, default=str)
-        except Exception:
-            pass
 
         # 신규 업로드 vs 직전 확정 월/주차 비교 코멘트
         upload_comments = []

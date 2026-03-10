@@ -161,33 +161,6 @@ def is_db_empty():
     return row is None
 
 
-# ── 마이그레이션 ──────────────────────────────────────────────────────────────
-
-def migrate_confirmed_weeks_json(json_path):
-    """confirmed_weeks.json → DB 마이그레이션 (1회). 이미 DB에 데이터 있으면 스킵."""
-    if not os.path.exists(json_path):
-        return
-    # DB에 이미 데이터 있으면 스킵
-    with _connect() as conn:
-        existing = conn.execute("SELECT COUNT(*) FROM confirmed_weeks").fetchone()[0]
-    if existing > 0:
-        return
-    try:
-        with open(json_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        with _lock:
-            with _connect() as conn:
-                for filename, weeks in data.items():
-                    for week in weeks:
-                        conn.execute(
-                            "INSERT OR IGNORE INTO confirmed_weeks (monthly_filename, week_label) VALUES (?, ?)",
-                            (filename, week),
-                        )
-                conn.commit()
-    except Exception as e:
-        print(f"[DB] confirmed_weeks 마이그레이션 오류: {e}")
-
-
 def migrate_excel_stats():
     """모든 월간 Excel 파일에서 통계를 읽어 DB에 저장 (1회 마이그레이션)."""
     from analytics import read_monthly_stats, _parse_ym
