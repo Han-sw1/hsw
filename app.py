@@ -19,6 +19,15 @@ if _BASE_DIR != os.path.dirname(__file__):
     _vol_cw = os.path.join(_BASE_DIR, "confirmed_weeks.json")
     if os.path.exists(_repo_cw) and not os.path.exists(_vol_cw):
         shutil.copy2(_repo_cw, _vol_cw)
+    # data/ 폴더 (rawdata xlsx): repo → volume 복사
+    _repo_data = os.path.join(os.path.dirname(__file__), "data")
+    _vol_data = os.path.join(_BASE_DIR, "data")
+    if os.path.exists(_repo_data):
+        os.makedirs(_vol_data, exist_ok=True)
+        for _f in os.listdir(_repo_data):
+            _dst = os.path.join(_vol_data, _f)
+            if not os.path.exists(_dst):
+                shutil.copy2(os.path.join(_repo_data, _f), _dst)
 import tempfile
 import json
 import pickle
@@ -60,6 +69,13 @@ def _trigger_cache_refresh():
         except Exception:
             pass
     threading.Thread(target=_run, daemon=True).start()
+
+# 서버 시작 시 rawdata 캐시 미리 로드 (백그라운드)
+try:
+    from rawdata import prewarm as _rawdata_prewarm
+    _rawdata_prewarm()
+except Exception:
+    pass
 
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 REFERENCE_DIR = os.path.join(os.path.dirname(__file__), "reference_files")

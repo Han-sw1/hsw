@@ -8,6 +8,7 @@ server.log
 confirmed_weeks.json
 analytics_cache.json
 cw_stats_cache.json
+rawdata_cache.json
 
 # Excel 파일 기본 제외, 단 monthly_files와 reference_files는 포함
 *.xls

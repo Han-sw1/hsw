@@ -122,13 +122,41 @@ def parse_regional(path):
 
     return result
 
+import threading as _threading
+_BASE_DIR = os.environ.get("DATA_DIR", _BASE)
+_DISK_CACHE_PATH = os.path.join(_BASE_DIR, "rawdata_cache.json")
 _CACHE = {}
 _CACHE_MTIME = {}
+_cache_lock = _threading.Lock()
+
+def _load_disk_cache():
+    """디스크 캐시 로드 → (_CACHE, _CACHE_MTIME) 초기화."""
+    global _CACHE, _CACHE_MTIME
+    if not os.path.exists(_DISK_CACHE_PATH):
+        return
+    try:
+        with open(_DISK_CACHE_PATH, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+        _CACHE = saved.get("data", {})
+        _CACHE_MTIME = saved.get("mtime", {})
+    except Exception:
+        pass
+
+def _save_disk_cache():
+    try:
+        with open(_DISK_CACHE_PATH, "w", encoding="utf-8") as f:
+            json.dump({"data": _CACHE, "mtime": _CACHE_MTIME}, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+# 서버 시작 시 디스크 캐시 로드
+_load_disk_cache()
 
 def get_rawdata_stats(force_refresh=False):
     global _CACHE, _CACHE_MTIME
     paths = _get_rawdata_paths()
 
+    changed = False
     result = {"ok": True}
     for key, parse_fn, path_key in [
         ("b_series", parse_b_series, "b_series"),
@@ -148,7 +176,21 @@ def get_rawdata_stats(force_refresh=False):
             _CACHE[key] = data
             _CACHE_MTIME[key] = mtime
             result[key] = data
+            changed = True
         except Exception as e:
             result[key] = {"error": str(e)}
 
+    if changed:
+        _save_disk_cache()
+
     return result
+
+def prewarm():
+    """서버 시작 시 백그라운드에서 캐시 미리 로드."""
+    def _run():
+        try:
+            get_rawdata_stats()
+        except Exception:
+            pass
+    t = _threading.Thread(target=_run, daemon=True)
+    t.start()
