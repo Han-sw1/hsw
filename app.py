@@ -721,6 +721,106 @@ def rawdata_stats():
     return resp
 
 
+@app.route("/api/fault-type-stats")
+def fault_type_stats():
+    """월별 장애파일(monthly_files)에서 단말기별 접수오류유형/현장처리유형 월별 집계 반환."""
+    from analytics import get_all_historical_stats, TAB_ORDER
+    all_stats = get_all_historical_stats()
+
+    # 탭 그룹 정의
+    GROUPS = {
+        "b_series":  {"label": "B시리즈", "tabs": ["서울 B800", "서울 B700", "서울 B710"]},
+        "airport":   {"label": "공항 B620", "tabs": ["공항 B620"]},
+        "regional":  {"label": "지역버스", "tabs": [
+            "대전 B650", "세종 B500", "제주 B400", "포항 B800",
+            "상주,영주,예천 B400", "안동 B520D", "김해 B600"
+        ]},
+    }
+
+    # 월 레이블 정렬
+    sorted_keys = sorted(all_stats.keys())
+    months = []
+    for k in sorted_keys:
+        lbl = all_stats[k].get("label", "")
+        if lbl and lbl not in months:
+            months.append(lbl)
+
+    result = {"ok": True, "months": months}
+
+    for group_key, group_info in GROUPS.items():
+        tabs_data = {}
+        for tab in group_info["tabs"]:
+            # 월별 건수
+            by_month = {}
+            # 장애유형 컬럼별: {col: {type: {month: count}}}
+            fault_cols = {}
+            for k in sorted_keys:
+                entry = all_stats[k]
+                lbl = entry.get("label", "")
+                tab_data = entry.get("tabs", {}).get(tab)
+                if not tab_data:
+                    continue
+                cnt = tab_data.get("count", 0)
+                if cnt:
+                    by_month[lbl] = by_month.get(lbl, 0) + cnt
+                bmf = tab_data.get("by_month_faults", {})
+                for col, type_counts in bmf.items():
+                    if col not in fault_cols:
+                        fault_cols[col] = {}
+                    for ft, fc in type_counts.items():
+                        if ft not in fault_cols[col]:
+                            fault_cols[col][ft] = {}
+                        fault_cols[col][ft][lbl] = fault_cols[col][ft].get(lbl, 0) + fc
+
+            if not by_month:
+                continue
+
+            # 컬럼별 집계 정리
+            col_result = {}
+            for col, types_data in fault_cols.items():
+                total_by_type = {ft: sum(mv.values()) for ft, mv in types_data.items()}
+                col_result[col] = {
+                    "types": sorted(types_data.keys(), key=lambda t: -total_by_type[t]),
+                    "by_month": types_data,
+                    "total_by_type": total_by_type,
+                }
+
+            tabs_data[tab] = {"by_month": by_month, **col_result}
+
+        if tabs_data:
+            result[group_key] = {"months": months, "tabs": tabs_data}
+
+    resp = make_response(jsonify(result))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.route("/api/export-confirmed")
+def export_confirmed():
+    """confirmed_weeks.json 다운로드."""
+    if not os.path.exists(CONFIRMED_WEEKS_FILE):
+        return jsonify({"ok": False, "error": "파일 없음"}), 404
+    return send_file(CONFIRMED_WEEKS_FILE, as_attachment=True,
+                     download_name="confirmed_weeks.json",
+                     mimetype="application/json")
+
+
+@app.route("/api/import-confirmed", methods=["POST"])
+def import_confirmed():
+    """confirmed_weeks.json 업로드 후 캐시 재생성."""
+    import json as _json
+    f = request.files.get("file")
+    if not f:
+        return jsonify({"ok": False, "error": "파일 없음"}), 400
+    try:
+        data = _json.loads(f.read().decode("utf-8"))
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"JSON 파싱 오류: {e}"}), 400
+    save_confirmed_weeks(data)
+    _trigger_cache_refresh()
+    return jsonify({"ok": True, "imported": len(data)})
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     debug = os.environ.get("FLASK_DEBUG", "true").lower() == "true"

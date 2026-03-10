@@ -251,6 +251,29 @@ document.getElementById('citsFileInput').addEventListener('change', function() {
 ['closeSettings', 'cancelSettings'].forEach(id =>
   document.getElementById(id).addEventListener('click', closeSettings)
 );
+
+// 확정 데이터 가져오기
+document.getElementById('importConfirmedInput').addEventListener('change', function() {
+  const file = this.files[0];
+  if (!file) return;
+  const status = document.getElementById('importConfirmedStatus');
+  status.textContent = '업로드 중...';
+  const fd = new FormData();
+  fd.append('file', file);
+  fetch('/api/import-confirmed', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        status.style.color = 'var(--green)';
+        status.textContent = `완료! ${d.imported}개 항목 적용됨`;
+      } else {
+        status.style.color = 'var(--primary)';
+        status.textContent = '오류: ' + d.error;
+      }
+    })
+    .catch(() => { status.style.color='var(--primary)'; status.textContent='업로드 실패'; });
+  this.value = '';
+});
 document.getElementById('settingsModal').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeSettings();
 });

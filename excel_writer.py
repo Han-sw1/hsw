@@ -555,7 +555,8 @@ def compute_web_stats(final_tabs):
         if df is None or df.empty:
             continue
 
-        is_regional = not any(k in tab_name for k in ["B800", "B700", "B710", "B620"])
+        from analytics import REGIONAL_TABS
+        is_regional = tab_name in REGIONAL_TABS
         fault_col = "단말기접수유형" if is_regional else "접수오류유형"
 
         date_series = _get_date_series(df)

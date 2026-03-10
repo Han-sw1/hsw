@@ -33,6 +33,7 @@ function loadDashboard(isReload) {
       try { initCompareSelects(data.labels || []); } catch(e) { console.error('셀렉트 오류:', e); }
       try { renderCompare(); } catch(e) { console.error('비교 오류:', e); }
       try { loadConfirmedWeeksStats(); } catch(e) { console.error('확정 주차 오류:', e); }
+      try { loadFaultTypeSection(); } catch(e) { console.error('장애유형 섹션 오류:', e); }
 
       if (isReload) {
         // 차트 재생성 (기존 차트 파괴 후 재생성)
@@ -372,11 +373,11 @@ function renderConfirmedWeekDetail() {
     const top3 = week.tab_top3?.[tab] || '-';
     const rate = week.tab_rates?.[tab];
     const rateHtml = rate != null
-      ? `<br><span style="font-size:13px;font-weight:600;color:var(--gray-dark)">${rate}%</span>`
+      ? `<span class="rate-badge ${rate >= 1 ? 'bad' : 'ok'}">${rate}%</span>`
       : '';
     return `<tr>
       <td><span class="tab-label ${cls}">${tab}</span></td>
-      <td class="count-cell">${cnt}${rateHtml}</td>
+      <td class="count-cell">${cnt}건 ${rateHtml}</td>
       <td class="period-cell"><span class="week-badge">${week.week_label} <b>${cnt}</b>건</span></td>
       <td class="top3-cell">${top3}</td>
     </tr>`;
@@ -514,4 +515,130 @@ function renderFaultChange() {
           ${goneFaults.length?`<div style="border-top:1px dashed #A8D8B4;margin:8px 0"></div>${faultItemHtml(goneFaults,'gone')}`:''}
         </div>
       </div>`;
+}
+
+// ── 단말기별 장애유형 ────────────────────────────────
+let ftAllData = null;
+// 탭 → 그룹 매핑 (뷰 이름 결정용)
+const FT_TAB_META = {
+  b_series: { cls: 'b-tab',  views: ['접수오류유형','현장처리유형'] },
+  airport:  { cls: 'ap-tab', views: ['접수오류유형','현장처리유형'] },
+  regional: { cls: 'rg-tab', views: ['단말기접수유형','단말기현장처리'] },
+};
+const ftState = { groupKey: null, tab: null, view: null };
+
+// 전체 탭 플랫 리스트 반환: [{tab, groupKey, cls}]
+function ftFlatTabs() {
+  if (!ftAllData) return [];
+  const list = [];
+  for (const [gk, meta] of Object.entries(FT_TAB_META)) {
+    const gd = ftAllData[gk];
+    if (!gd) continue;
+    for (const tab of Object.keys(gd.tabs||{})) {
+      list.push({ tab, groupKey: gk, cls: meta.cls });
+    }
+  }
+  return list;
+}
+
+function loadFaultTypeSection() {
+  fetch('/api/fault-type-stats', { cache: 'no-store' })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.ok) return;
+      ftAllData = data;
+      const flat = ftFlatTabs();
+      if (!flat.length) return;
+      ftState.groupKey = flat[0].groupKey;
+      ftState.tab = flat[0].tab;
+      ftState.view = FT_TAB_META[flat[0].groupKey].views[0];
+      document.getElementById('faultTypeSection').style.display = '';
+      renderFtTabGroup();
+      renderFtViewToggle();
+      renderFtTable();
+    })
+    .catch(e => console.error('장애유형 데이터 오류:', e));
+}
+
+function renderFtTabGroup() {
+  const flat = ftFlatTabs();
+  const el = document.getElementById('ftTabGroup');
+  el.innerHTML = flat.map(({ tab, groupKey, cls }) =>
+    `<button class="tab-btn ${cls} ${tab===ftState.tab?'active':''}" data-tab="${tab}" data-gk="${groupKey}">${tab}</button>`
+  ).join('');
+  el.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => ftSetTab(btn.dataset.tab, btn.dataset.gk));
+  });
+}
+
+function ftSetTab(tab, groupKey) {
+  ftState.tab = tab;
+  ftState.groupKey = groupKey;
+  ftState.view = FT_TAB_META[groupKey].views[0];
+  renderFtTabGroup();
+  renderFtViewToggle();
+  renderFtTable();
+}
+
+function renderFtViewToggle() {
+  const views = FT_TAB_META[ftState.groupKey]?.views || [];
+  document.getElementById('ftViewToggle').innerHTML =
+    `<div class="ft-seg">${views.map(v =>
+      `<button class="ft-seg-btn ${v===ftState.view?'active':''}" onclick="ftSetView('${v}')">${v}</button>`
+    ).join('')}</div>`;
+}
+
+function ftSetView(view) {
+  ftState.view = view;
+  renderFtViewToggle();
+  renderFtTable();
+}
+
+function renderFtTable() {
+  const tbl = document.getElementById('ftTable');
+  const gd = ftAllData?.[ftState.groupKey];
+  if (!gd || !gd.tabs[ftState.tab]) { tbl.innerHTML = ''; return; }
+
+  const td = gd.tabs[ftState.tab];
+  const months = gd.months;
+  const typeData = td[ftState.view];
+  if (!typeData || !typeData.types?.length) {
+    tbl.innerHTML = `<tr><td class="empty-msg">데이터 없음</td></tr>`; return;
+  }
+
+  const { types, by_month, total_by_type } = typeData;
+  const grandTotal = months.reduce((s,m) => s+(td.by_month[m]||0), 0);
+  const monthTotals = {};
+  months.forEach(m => {
+    monthTotals[m] = types.reduce((s,t) => s+(by_month[t]?.[m]||0), 0);
+  });
+
+  const typeTotal = types.reduce((s,t) => s+(total_by_type[t]||0), 0);
+
+  const rows = types.map(type => {
+    const cells = months.map(m => {
+      const v = by_month[type]?.[m] || 0;
+      return `<td>${v > 0 ? v.toLocaleString()+'건' : '<span style="color:var(--border)">-</span>'}</td>`;
+    }).join('');
+    const tot = total_by_type[type] || 0;
+    const pct = typeTotal > 0 ? (tot / typeTotal * 100).toFixed(1) : 0;
+    return `<tr>
+      <td title="${type}">${type.length > 22 ? type.slice(0,22)+'…' : type}</td>
+      ${cells}
+      <td class="total-col">${tot.toLocaleString()}건<br><span style="font-size:11px;font-weight:600;color:var(--gray)">${pct}%</span></td>
+    </tr>`;
+  }).join('');
+
+  const footCells = months.map(m => `<td>${(monthTotals[m]||0).toLocaleString()}건</td>`).join('');
+
+  tbl.innerHTML = `
+    <thead><tr>
+      <th>${ftState.view}</th>
+      ${months.map(m=>`<th>${m.replace('년 ','년<br>')}</th>`).join('')}
+      <th>합계</th>
+    </tr></thead>
+    <tbody>
+      ${rows}
+      <tr><td>합계</td>${footCells}<td>${typeTotal.toLocaleString()}건</td></tr>
+    </tbody>`;
 }

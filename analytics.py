@@ -36,6 +36,12 @@ TAB_ORDER = [
     "상주,영주,예천 B400", "안동 B520D", "김해 B600",
 ]
 
+# 지역버스 탭: 단말기접수유형/단말기현장처리 컬럼 사용 (이름에 B800이 있어도 지역버스)
+REGIONAL_TABS = {
+    "대전 B650", "세종 B500", "제주 B400", "포항 B800",
+    "상주,영주,예천 B400", "안동 B520D", "김해 B600",
+}
+
 _CACHE_BASE = os.environ.get("DATA_DIR", os.path.dirname(__file__))
 CACHE_PATH = os.path.join(_CACHE_BASE, "analytics_cache.json")
 
@@ -145,15 +151,18 @@ def read_monthly_stats(filename):
             raw_sheet = TAB_TO_RAWSHEET.get(tab_name)
             if not raw_sheet or raw_sheet not in wb.sheetnames:
                 continue
-            is_regional = not any(k in tab_name for k in ["B800", "B700", "B710", "B620"])
-            fault_col_name = "단말기접수유형" if is_regional else "접수오류유형"
+            is_regional = tab_name in REGIONAL_TABS
+            fault_col_name  = "단말기접수유형" if is_regional else "접수오류유형"
+            field_col_name  = "단말기현장처리" if is_regional else "현장처리유형"
             count = 0
             by_week = {}
             by_week_faults = {}  # {week: {fault_type: count}}
+            by_month_faults = {fault_col_name: {}, field_col_name: {}}  # {col: {type: count}}
             try:
                 date_pos = None
                 week_pos = None
                 fault_pos = None
+                field_pos = None
                 for i, row in enumerate(wb[raw_sheet].iter_rows(values_only=True)):
                     if i == 0:
                         headers = list(row)
@@ -164,6 +173,8 @@ def read_monthly_stats(filename):
                                 week_pos = j
                             if h == fault_col_name:
                                 fault_pos = j
+                            if h == field_col_name:
+                                field_pos = j
                         if date_pos is None:
                             occ = [j for j, h in enumerate(headers) if h == "장애접수일시"]
                             date_pos = occ[1] if len(occ) >= 2 else (occ[0] if occ else None)
@@ -184,6 +195,14 @@ def read_monthly_stats(filename):
                             count += 1
                     elif d.year == year and d.month == month:
                         count += 1
+                        # 월별 장애유형 집계 (접수오류유형 + 현장처리유형)
+                        for pos, col in [(fault_pos, fault_col_name), (field_pos, field_col_name)]:
+                            if pos is not None and pos < len(row):
+                                fv = row[pos]
+                                if fv not in (None, "", "nan", "None", "NaN"):
+                                    fv = str(fv).strip()
+                                    if fv and fv not in ("nan", "None", "NaN"):
+                                        by_month_faults[col][fv] = by_month_faults[col].get(fv, 0) + 1
 
                     # 주차별 건수: 날짜 필터 없이 집계
                     # (예: 2월26~28일은 날짜상 2월이지만 3월1주차에 속함 → 포함해야 함)
@@ -206,6 +225,7 @@ def read_monthly_stats(filename):
                 count = 0
                 by_week = {}
                 by_week_faults = {}
+                by_month_faults = {fault_col_name: {}, field_col_name: {}}
 
             # 주차별 TOP3 문자열 생성
             by_week_top3 = {
@@ -219,6 +239,7 @@ def read_monthly_stats(filename):
                 "by_week": by_week,
                 "by_week_top3": by_week_top3,
                 "by_week_faults": by_week_faults,  # raw Counter (합산용)
+                "by_month_faults": by_month_faults,  # {col_name: {type: count}}
                 "운영수량": None,
                 "fault_rate": None,
             }
