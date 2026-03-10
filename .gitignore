@@ -2,7 +2,6 @@ __pycache__/
 *.pyc
 results/
 uploads/
-config.json
 sheet_headers.txt
 server.log
 # 런타임 데이터 (git에서 제외 - 로컬/Railway Volume에서 독립 관리)
@@ -17,3 +16,5 @@ cw_stats_cache.json
 !monthly_files/*.xls
 !reference_files/*.xlsx
 !reference_files/*.xls
+!data/*.xlsx
+!data/*.xls

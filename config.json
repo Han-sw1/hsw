@@ -1,0 +1,9 @@
+{
+  "criteria_path": "C:/Users/user/OneDrive/바탕 화면/260222/★오류처리유형 기준_260203_수정_B800구분추가.xlsx",
+  "cits_path": "C:/Users/user/OneDrive/바탕 화면/260222/CITS 단말기 1600대 차량정보_210810(간편정리).xlsx",
+  "rawdata_files": {
+    "b_series": "data/B800,B700,B710 전화접수 전체(250601~260228).xlsx",
+    "regional": "data/지역버스 전화,현장접수 전체(250601~260228).xlsx",
+    "b620": "data/공항 B620 전화,현장접수 전체(250601~260228).xlsx"
+  }
+}
