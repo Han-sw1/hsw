@@ -39,6 +39,9 @@ TAB_ORDER = [
 _CACHE_BASE = os.environ.get("DATA_DIR", os.path.dirname(__file__))
 CACHE_PATH = os.path.join(_CACHE_BASE, "analytics_cache.json")
 
+import threading as _threading
+_cache_lock = _threading.Lock()
+
 
 def _date_to_week_label(d):
     """날짜 → '3월1주' 형식 주차 레이블 (processor.get_week_label과 동일)."""
@@ -251,12 +254,32 @@ def _cache_valid():
     return True
 
 
+def _read_one_file(fn):
+    """단일 월간 파일 읽기 (병렬 처리용)."""
+    year, month = _parse_ym(fn)
+    if not year:
+        return None
+    stats = read_monthly_stats(fn)
+    if not stats:
+        return None
+    return f"{year}{month:02d}", {
+        "filename": fn,
+        "year": year,
+        "month": month,
+        "label": f"{year}년 {month}월",
+        "tabs": stats,
+    }
+
+
 def get_all_historical_stats(force_refresh=False):
-    """모든 월간 파일에서 통계 수집. 캐시 사용."""
+    """모든 월간 파일에서 통계 수집. 캐시 사용. 파일 읽기는 병렬 처리.
+    lock으로 동시 재생성 방지 (한 스레드만 재생성, 나머지는 대기 후 캐시 사용).
+    """
     cache_dir = os.path.dirname(CACHE_PATH)
     if cache_dir:
         os.makedirs(cache_dir, exist_ok=True)
 
+    # 빠른 캐시 히트 (lock 없이)
     if not force_refresh and _cache_valid():
         try:
             with open(CACHE_PATH, "r", encoding="utf-8") as f:
@@ -264,29 +287,39 @@ def get_all_historical_stats(force_refresh=False):
         except Exception:
             pass
 
-    all_stats = {}
-    for fn in list_monthly_files():
-        year, month = _parse_ym(fn)
-        if not year:
-            continue
-        stats = read_monthly_stats(fn)
-        if stats:
-            key = f"{year}{month:02d}"
-            all_stats[key] = {
-                "filename": fn,
-                "year": year,
-                "month": month,
-                "label": f"{year}년 {month}월",
-                "tabs": stats,
-            }
+    with _cache_lock:
+        # lock 획득 후 다시 체크 (다른 스레드가 이미 재생성했을 수 있음)
+        if not force_refresh and _cache_valid():
+            try:
+                with open(CACHE_PATH, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
 
-    try:
-        with open(CACHE_PATH, "w", encoding="utf-8") as f:
-            json.dump(all_stats, f, ensure_ascii=False, default=str)
-    except Exception:
-        pass
+        from concurrent.futures import ProcessPoolExecutor
+        files = list_monthly_files()
+        all_stats = {}
+        try:
+            with ProcessPoolExecutor(max_workers=4) as executor:
+                for result in executor.map(_read_one_file, files):
+                    if result:
+                        key, data = result
+                        all_stats[key] = data
+        except Exception:
+            # ProcessPool 실패 시 순차 처리 fallback
+            for fn in files:
+                result = _read_one_file(fn)
+                if result:
+                    key, data = result
+                    all_stats[key] = data
 
-    return all_stats
+        try:
+            with open(CACHE_PATH, "w", encoding="utf-8") as f:
+                json.dump(all_stats, f, ensure_ascii=False, default=str)
+        except Exception:
+            pass
+
+        return all_stats
 
 
 # ─── 자동 코멘트 생성 ─────────────────────────────────────

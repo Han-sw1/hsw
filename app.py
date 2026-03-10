@@ -45,6 +45,22 @@ def _warmup_cache():
 import threading
 threading.Thread(target=_warmup_cache, daemon=True).start()
 
+
+def _trigger_cache_refresh():
+    """삽입/확정/취소 작업 완료 후 캐시 자동 재생성 (백그라운드)."""
+    def _run():
+        try:
+            # cw_stats_cache 삭제 (다음 요청 시 재생성되도록)
+            _cw_path = os.path.join(_BASE_DIR, "cw_stats_cache.json")
+            if os.path.exists(_cw_path):
+                os.remove(_cw_path)
+            # analytics_cache 강제 재생성
+            from analytics import get_all_historical_stats
+            get_all_historical_stats(force_refresh=True)
+        except Exception:
+            pass
+    threading.Thread(target=_run, daemon=True).start()
+
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 REFERENCE_DIR = os.path.join(os.path.dirname(__file__), "reference_files")
 CONFIRMED_WEEKS_FILE = os.path.join(_BASE_DIR, "confirmed_weeks.json")
@@ -341,6 +357,7 @@ def insert_monthly():
         if "error" in report:
             return jsonify({"error": report["error"]}), 400
 
+        _trigger_cache_refresh()
         return jsonify({"ok": True, "report": report, "filename": monthly_filename})
 
     except Exception as e:
@@ -405,6 +422,7 @@ def confirm_week():
     if week not in cw[filename]:
         cw[filename].append(week)
     save_confirmed_weeks(cw)
+    _trigger_cache_refresh()
     return jsonify({"ok": True})
 
 
@@ -419,6 +437,7 @@ def unconfirm_week():
     if filename in cw and week in cw[filename]:
         cw[filename].remove(week)
     save_confirmed_weeks(cw)
+    _trigger_cache_refresh()
     return jsonify({"ok": True})
 
 
