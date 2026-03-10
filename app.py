@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, make_response
 import os
 import shutil
 
@@ -488,15 +488,18 @@ _CW_STATS_CACHE_PATH = os.path.join(_BASE_DIR, "cw_stats_cache.json")
 
 
 def _cw_stats_cache_valid():
-    """cw_stats_cache.json이 모든 월간 파일 + confirmed_weeks.json보다 최신인지 확인."""
+    """cw_stats_cache.json이 모든 월간 파일 + confirmed_weeks.json + analytics_cache.json보다 최신인지 확인."""
     if not os.path.exists(_CW_STATS_CACHE_PATH):
         return False
     ct = os.path.getmtime(_CW_STATS_CACHE_PATH)
     from excel_writer import list_monthly_files, get_monthly_file_path
+    from analytics import CACHE_PATH as _ANALYTICS_CACHE_PATH
     for fn in list_monthly_files():
         if os.path.getmtime(get_monthly_file_path(fn)) > ct:
             return False
     if os.path.exists(CONFIRMED_WEEKS_FILE) and os.path.getmtime(CONFIRMED_WEEKS_FILE) > ct:
+        return False
+    if os.path.exists(_ANALYTICS_CACHE_PATH) and os.path.getmtime(_ANALYTICS_CACHE_PATH) > ct:
         return False
     return True
 
@@ -552,10 +555,15 @@ def confirmed_weeks_stats():
                         week_map[display_label] = {
                             "tab_counts": {},
                             "tab_faults": {},
+                            "tab_ops": {},
                             "confirmed": False,
                         }
                     wm = week_map[display_label]
                     wm["tab_counts"][tab] = wm["tab_counts"].get(tab, 0) + cnt
+                    # 운영수량 (주차별로 동일하므로 덮어쓰기)
+                    ops = td.get("운영수량")
+                    if ops:
+                        wm["tab_ops"][tab] = ops
 
                     # fault 합산
                     raw_faults = td.get("by_week_faults", {}).get(week_label, {})
@@ -581,15 +589,25 @@ def confirmed_weeks_stats():
             wm = week_map[display_label]
             if not wm["tab_counts"]:
                 continue
+            if not wm["confirmed"]:
+                continue
             # TOP3 계산 (합산된 fault 카운터 기준)
             tab_top3 = {
                 tab: "/".join(sorted(fc, key=fc.get, reverse=True)[:3])
                 for tab, fc in wm["tab_faults"].items() if fc
             }
+            # 장애율 = 건수 / 운영수량 * 100
+            tab_rates = {
+                tab: round(cnt / wm["tab_ops"][tab] * 100, 2)
+                for tab, cnt in wm["tab_counts"].items()
+                if wm["tab_ops"].get(tab)
+            }
             result.append({
                 "week_label": display_label,
                 "tab_counts": wm["tab_counts"],
                 "tab_top3": tab_top3,
+                "tab_rates": tab_rates,
+                "tab_faults": wm["tab_faults"],
                 "total": sum(wm["tab_counts"].values()),
                 "confirmed": wm["confirmed"],
             })
@@ -602,7 +620,10 @@ def confirmed_weeks_stats():
         except Exception:
             pass
 
-        return jsonify(payload)
+        from flask import make_response
+        resp = make_response(jsonify(payload))
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
     except Exception as e:
         import traceback
         return jsonify({"error": str(e), "detail": traceback.format_exc()}), 500
@@ -615,6 +636,7 @@ def analysis_page():
 
 @app.route("/api/analysis-data")
 def analysis_data():
+    from flask import make_response
     try:
         all_stats = get_all_historical_stats()
 
@@ -640,13 +662,15 @@ def analysis_data():
             for tab_data in v.get("tabs", {}).values():
                 tab_data.pop("by_week_faults", None)  # 분석 대시보드에서 불필요
 
-        return jsonify({
+        resp = make_response(jsonify({
             "ok": True,
             "labels": labels,
             "chart_datasets": chart_datasets,
             "all_stats": all_stats,
             "comments": comments,
-        })
+        }))
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
     except Exception as e:
         import traceback
         return jsonify({"error": str(e), "detail": traceback.format_exc()}), 500
@@ -682,6 +706,19 @@ def download_monthly(filename):
     if not os.path.exists(file_path):
         return jsonify({"error": "파일 없음"}), 404
     return send_file(file_path, as_attachment=True, download_name=filename)
+
+
+@app.route("/rawdata")
+def rawdata_page():
+    return render_template("rawdata.html")
+
+@app.route("/api/rawdata-stats")
+def rawdata_stats():
+    from rawdata import get_rawdata_stats
+    result = get_rawdata_stats()
+    resp = make_response(jsonify(result))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@
   <title>ATEC 장애 분석 대시보드</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/style.css?v=20260310b">
   <script src="/static/js/chart.min.js"></script>
   <style>
     .analysis-grid {
@@ -118,6 +118,22 @@
     .cmp-diff { font-weight:800; font-size:14px; }
     .cmp-bar  { display:inline-block; height:6px; border-radius:3px; margin-left:6px; vertical-align:middle; opacity:0.7; }
     .loading-bar { text-align: center; padding: 60px; color: var(--gray); font-size: 14px; }
+    .fault-change-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:4px; }
+    @media(max-width:700px){.fault-change-grid{grid-template-columns:1fr;}}
+    .fault-change-box { border-radius:8px; padding:14px 18px; }
+    .fault-change-box.up   { background:#FFF0F4; border:1px solid #F5C0CF; }
+    .fault-change-box.down { background:#EBF7EE; border:1px solid #A8D8B4; }
+    .fault-change-title { font-size:13px; font-weight:800; margin-bottom:10px; }
+    .fault-change-title.up   { color:var(--primary); }
+    .fault-change-title.down { color:var(--green); }
+    .fault-item { display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid rgba(0,0,0,0.06); font-size:13px; }
+    .fault-item:last-child { border-bottom:none; }
+    .fault-name { color:var(--gray-dark); font-weight:500; flex:1; }
+    .fault-delta { font-weight:800; white-space:nowrap; margin-left:10px; }
+    .fault-delta.up   { color:var(--primary); }
+    .fault-delta.down { color:var(--green); }
+    .fault-delta.new  { color:#7A4800; background:#FFF3CD; padding:1px 7px; border-radius:4px; font-size:11px; }
+    .fault-delta.gone { color:var(--gray); background:var(--gray-light); padding:1px 7px; border-radius:4px; font-size:11px; }
     .full-width { grid-column: 1 / -1; }
     .download-row { display: flex; flex-wrap: wrap; gap: 8px; }
     .btn-dl {
@@ -197,20 +213,6 @@
           <div style="overflow-x:auto"><table class="compare-table" id="compareGrid"></table></div>
         </div>
 
-        <!-- 코멘트 -->
-        <div class="comments-card full-width">
-          <div class="card-header" style="flex-wrap:wrap;gap:10px;">
-            <span class="card-icon">&#128172;</span>
-            <h2 style="margin-right:auto">자동 분석 코멘트</h2>
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-              <select class="month-sel" id="commentSelA" onchange="refreshComments()"></select>
-              <span style="font-size:13px;color:var(--gray)">vs</span>
-              <select class="month-sel" id="commentSelB" onchange="refreshComments()"></select>
-            </div>
-          </div>
-          <ul class="comment-list" id="commentList"></ul>
-        </div>
-
         <!-- 확정된 주차 현황 -->
         <div class="chart-box full-width" id="confirmedWeeksSection" style="display:none">
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
@@ -222,7 +224,7 @@
               <thead>
                 <tr>
                   <th>지역 / 단말</th>
-                  <th>건수</th>
+                  <th>건수 / 장애율</th>
                   <th>주차</th>
                   <th>TOP3 주요 장애유형</th>
                 </tr>
@@ -230,6 +232,22 @@
               <tbody id="confirmedWeekBody"></tbody>
             </table>
           </div>
+        </div>
+
+        <!-- 주차 비교 -->
+        <div class="chart-box full-width" id="weekCompareSection" style="display:none">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+            <div class="chart-title" style="margin:0">&#128200; 주차 비교</div>
+            <select class="month-sel" id="weekSelA" onchange="renderWeekCompare()"></select>
+            <span style="font-size:13px;color:var(--gray)">vs</span>
+            <select class="month-sel" id="weekSelB" onchange="renderWeekCompare()"></select>
+          </div>
+          <!-- 단말기별 비교 테이블 -->
+          <div style="overflow-x:auto;margin-bottom:18px">
+            <table class="compare-table" id="weekCompareGrid"></table>
+          </div>
+          <!-- 장애유형 변화 -->
+          <div id="faultChangeWrap"></div>
         </div>
 
         <!-- 확정 파일 다운로드 -->
@@ -241,6 +259,6 @@
     </div>
   </main>
 
-  <script src="/static/js/analysis.js"></script>
+  <script src="/static/js/analysis.js?v=20260310d"></script>
 </body>
 </html>

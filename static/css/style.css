@@ -333,8 +333,8 @@ body {
 .rate-bad  { color: var(--primary); }
 .rate-ok   { color: var(--green); }
 .week-cell  { white-space: nowrap; }
-.top3-cell  { font-size: 13px; color: var(--gray-dark); word-break: break-all; min-width: 200px; }
-.period-cell { white-space: nowrap; }
+.top3-cell  { font-size: 13px; color: var(--gray-dark); word-break: break-all; min-width: 200px; text-align: center; }
+.period-cell { white-space: nowrap; text-align: center; }
 .period-row { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
 .period-row:last-child { margin-bottom: 0; }
 .week-badge {

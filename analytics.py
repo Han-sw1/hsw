@@ -178,11 +178,10 @@ def read_monthly_stats(filename):
                             d = val if isinstance(val, date_type) else pd.to_datetime(str(val)).date()
                         except Exception:
                             pass
-                    # 월 건수: 해당 연/월 날짜 데이터만 카운트
+                    # 월 건수: 날짜 기준으로 카운트 (날짜가 해당 월인 행만)
                     if d is None:
                         if date_pos is None:
                             count += 1
-                        # 날짜 파싱 실패 행은 count에서 제외, by_week는 시도
                     elif d.year == year and d.month == month:
                         count += 1
 
@@ -296,17 +295,17 @@ def get_all_historical_stats(force_refresh=False):
             except Exception:
                 pass
 
-        from concurrent.futures import ProcessPoolExecutor
+        from concurrent.futures import ThreadPoolExecutor
         files = list_monthly_files()
         all_stats = {}
         try:
-            with ProcessPoolExecutor(max_workers=4) as executor:
+            with ThreadPoolExecutor(max_workers=4) as executor:
                 for result in executor.map(_read_one_file, files):
                     if result:
                         key, data = result
                         all_stats[key] = data
         except Exception:
-            # ProcessPool 실패 시 순차 처리 fallback
+            # 실패 시 순차 처리 fallback
             for fn in files:
                 result = _read_one_file(fn)
                 if result:

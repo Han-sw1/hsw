@@ -229,9 +229,13 @@ def _make_sheetdata_xml(headers, rows):
     return ''.join(parts)
 
 
-def _replace_sheetdata(sheet_xml_bytes, new_sheetdata_xml, new_cols_xml=''):
-    """시트 XML에서 <sheetData> (및 <cols>) 교체"""
+def _replace_sheetdata(sheet_xml_bytes, new_sheetdata_xml, new_cols_xml='', total_rows=0, total_cols=0):
+    """시트 XML에서 <sheetData> (및 <cols>, <dimension>) 교체"""
     sheet_str = sheet_xml_bytes.decode('utf-8')
+    # dimension 업데이트 (openpyxl이 이 범위로 읽을 행 수를 결정함)
+    if total_rows > 0 and total_cols > 0:
+        new_dim = f'<dimension ref="A1:{get_column_letter(total_cols)}{total_rows}"/>'
+        sheet_str = re.sub(r'<dimension[^/]*/>', new_dim, sheet_str)
     # cols 교체 또는 삽입
     if new_cols_xml:
         if re.search(r'<cols[ />]', sheet_str):
@@ -281,7 +285,9 @@ def _update_xlsx_sheets(file_path, updates):
                     new_sd = _make_sheetdata_xml(headers, rows)
                     widths = _calc_col_widths(headers, rows)
                     new_cols = _make_cols_xml(widths)
-                    data = _replace_sheetdata(data, new_sd, new_cols)
+                    total_rows = len(rows) + 1  # +1 헤더
+                    total_cols = len(headers)
+                    data = _replace_sheetdata(data, new_sd, new_cols, total_rows, total_cols)
                     matched.add(item.filename)
                 zf_out.writestr(item, data)
         if not matched:
