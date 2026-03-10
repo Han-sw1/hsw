@@ -43,10 +43,7 @@ REGIONAL_TABS = {
 }
 
 _CACHE_BASE = os.environ.get("DATA_DIR", os.path.dirname(__file__))
-CACHE_PATH = os.path.join(_CACHE_BASE, "analytics_cache.json")
-
-import threading as _threading
-_cache_lock = _threading.Lock()
+CACHE_PATH = os.path.join(_CACHE_BASE, "analytics_cache.json")  # 하위 호환용 (사용 안 함)
 
 
 def _date_to_week_label(d):
@@ -262,84 +259,25 @@ def read_monthly_stats(filename):
     return result
 
 
-def _cache_valid():
-    """캐시 파일이 모든 월간 파일보다 최신인지 확인."""
-    if not os.path.exists(CACHE_PATH):
-        return False
-    cache_mtime = os.path.getmtime(CACHE_PATH)
-    for fn in list_monthly_files():
-        path = get_monthly_file_path(fn)
-        if os.path.getmtime(path) > cache_mtime:
-            return False
-    return True
-
-
-def _read_one_file(fn):
-    """단일 월간 파일 읽기 (병렬 처리용)."""
-    year, month = _parse_ym(fn)
-    if not year:
-        return None
-    stats = read_monthly_stats(fn)
-    if not stats:
-        return None
-    return f"{year}{month:02d}", {
-        "filename": fn,
-        "year": year,
-        "month": month,
-        "label": f"{year}년 {month}월",
-        "tabs": stats,
-    }
-
-
 def get_all_historical_stats(force_refresh=False):
-    """모든 월간 파일에서 통계 수집. 캐시 사용. 파일 읽기는 병렬 처리.
-    lock으로 동시 재생성 방지 (한 스레드만 재생성, 나머지는 대기 후 캐시 사용).
-    """
-    cache_dir = os.path.dirname(CACHE_PATH)
-    if cache_dir:
-        os.makedirs(cache_dir, exist_ok=True)
+    """DB에서 전체 월별 통계 반환. DB가 비어 있으면 Excel에서 마이그레이션 후 반환."""
+    import database as db
 
-    # 빠른 캐시 히트 (lock 없이)
-    if not force_refresh and _cache_valid():
-        try:
-            with open(CACHE_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-
-    with _cache_lock:
-        # lock 획득 후 다시 체크 (다른 스레드가 이미 재생성했을 수 있음)
-        if not force_refresh and _cache_valid():
-            try:
-                with open(CACHE_PATH, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                pass
-
-        from concurrent.futures import ThreadPoolExecutor
+    if force_refresh or db.is_db_empty():
+        # DB가 비었거나 강제 새로고침: 모든 Excel 파일 재스캔
         files = list_monthly_files()
-        all_stats = {}
-        try:
-            with ThreadPoolExecutor(max_workers=4) as executor:
-                for result in executor.map(_read_one_file, files):
-                    if result:
-                        key, data = result
-                        all_stats[key] = data
-        except Exception:
-            # 실패 시 순차 처리 fallback
-            for fn in files:
-                result = _read_one_file(fn)
-                if result:
-                    key, data = result
-                    all_stats[key] = data
+        for fn in files:
+            year, month = _parse_ym(fn)
+            if not year:
+                continue
+            try:
+                stats = read_monthly_stats(fn)
+                if stats:
+                    db.upsert_file_stats(fn, year, month, stats)
+            except Exception as e:
+                print(f"[analytics] {fn} 읽기 오류: {e}")
 
-        try:
-            with open(CACHE_PATH, "w", encoding="utf-8") as f:
-                json.dump(all_stats, f, ensure_ascii=False, default=str)
-        except Exception:
-            pass
-
-        return all_stats
+    return db.get_all_historical_stats()
 
 
 # ─── 자동 코멘트 생성 ─────────────────────────────────────

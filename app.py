@@ -39,43 +39,8 @@ from analytics import (
     generate_week_comparison,
     read_운영수량_only, TAB_ORDER as ANALYTICS_TAB_ORDER, _parse_ym,
 )
-
-app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB
-
-# 앱 시작 시 analytics 캐시 warm-up (첫 페이지 로드 느림 방지)
-def _warmup_cache():
-    try:
-        from analytics import get_all_historical_stats
-        get_all_historical_stats()
-    except Exception:
-        pass
-
+import database as _db
 import threading
-threading.Thread(target=_warmup_cache, daemon=True).start()
-
-
-def _trigger_cache_refresh():
-    """삽입/확정/취소 작업 완료 후 캐시 자동 재생성 (백그라운드)."""
-    def _run():
-        try:
-            # cw_stats_cache 삭제 (다음 요청 시 재생성되도록)
-            _cw_path = os.path.join(_BASE_DIR, "cw_stats_cache.json")
-            if os.path.exists(_cw_path):
-                os.remove(_cw_path)
-            # analytics_cache 강제 재생성
-            from analytics import get_all_historical_stats
-            get_all_historical_stats(force_refresh=True)
-        except Exception:
-            pass
-    threading.Thread(target=_run, daemon=True).start()
-
-# 서버 시작 시 rawdata 캐시 미리 로드 (백그라운드)
-try:
-    from rawdata import prewarm as _rawdata_prewarm
-    _rawdata_prewarm()
-except Exception:
-    pass
 
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 REFERENCE_DIR = os.path.join(os.path.dirname(__file__), "reference_files")
@@ -85,6 +50,30 @@ DEFAULT_CONFIG = {
     "criteria_path": "",
     "cits_path": "",
 }
+
+app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB
+
+# DB 초기화 및 마이그레이션 (백그라운드)
+def _startup_init():
+    try:
+        _db.init_db()
+        # confirmed_weeks.json → DB 마이그레이션 (1회)
+        _db.migrate_confirmed_weeks_json(CONFIRMED_WEEKS_FILE)
+        # Excel 파일 → DB 마이그레이션 (DB가 비어 있을 때만)
+        if _db.is_db_empty():
+            _db.migrate_excel_stats()
+    except Exception as e:
+        print(f"[DB] 초기화 오류: {e}")
+
+threading.Thread(target=_startup_init, daemon=True).start()
+
+# 서버 시작 시 rawdata 캐시 미리 로드 (백그라운드)
+try:
+    from rawdata import prewarm as _rawdata_prewarm
+    _rawdata_prewarm()
+except Exception:
+    pass
 
 
 def load_config():
@@ -100,15 +89,13 @@ def save_config(cfg):
 
 
 def load_confirmed_weeks():
-    if os.path.exists(CONFIRMED_WEEKS_FILE):
-        with open(CONFIRMED_WEEKS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
+    """DB에서 confirmed_weeks 반환."""
+    return _db.load_confirmed_weeks()
 
 
 def save_confirmed_weeks(data):
-    with open(CONFIRMED_WEEKS_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    """하위 호환용 — import 시에만 사용."""
+    pass
 
 
 def get_reference_paths():
@@ -373,7 +360,6 @@ def insert_monthly():
         if "error" in report:
             return jsonify({"error": report["error"]}), 400
 
-        _trigger_cache_refresh()
         return jsonify({"ok": True, "report": report, "filename": monthly_filename})
 
     except Exception as e:
@@ -433,12 +419,7 @@ def confirm_week():
     week = data.get("week_label")
     if not filename or not week:
         return jsonify({"error": "파라미터 누락"}), 400
-    cw = load_confirmed_weeks()
-    cw.setdefault(filename, [])
-    if week not in cw[filename]:
-        cw[filename].append(week)
-    save_confirmed_weeks(cw)
-    _trigger_cache_refresh()
+    _db.add_confirmed_week(filename, week)
     return jsonify({"ok": True})
 
 
@@ -449,11 +430,7 @@ def unconfirm_week():
     week = data.get("week_label")
     if not filename or not week:
         return jsonify({"error": "파라미터 누락"}), 400
-    cw = load_confirmed_weeks()
-    if filename in cw and week in cw[filename]:
-        cw[filename].remove(week)
-    save_confirmed_weeks(cw)
-    _trigger_cache_refresh()
+    _db.remove_confirmed_week(filename, week)
     return jsonify({"ok": True})
 
 
@@ -493,36 +470,9 @@ def delete_weekly_route():
         return jsonify({"error": str(e), "detail": traceback.format_exc()}), 500
 
 
-def _week_sort_key(week_label):
-    """'3월1주' → (3, 1) 정렬키."""
-    import re as _re
-    m = _re.search(r'(\d+)월(\d+)주', str(week_label))
-    return (int(m.group(1)), int(m.group(2))) if m else (99, 99)
-
-
-_CW_STATS_CACHE_PATH = os.path.join(_BASE_DIR, "cw_stats_cache.json")
-
-
-def _cw_stats_cache_valid():
-    """cw_stats_cache.json이 모든 월간 파일 + confirmed_weeks.json + analytics_cache.json보다 최신인지 확인."""
-    if not os.path.exists(_CW_STATS_CACHE_PATH):
-        return False
-    ct = os.path.getmtime(_CW_STATS_CACHE_PATH)
-    from excel_writer import list_monthly_files, get_monthly_file_path
-    from analytics import CACHE_PATH as _ANALYTICS_CACHE_PATH
-    for fn in list_monthly_files():
-        if os.path.getmtime(get_monthly_file_path(fn)) > ct:
-            return False
-    if os.path.exists(CONFIRMED_WEEKS_FILE) and os.path.getmtime(CONFIRMED_WEEKS_FILE) > ct:
-        return False
-    if os.path.exists(_ANALYTICS_CACHE_PATH) and os.path.getmtime(_ANALYTICS_CACHE_PATH) > ct:
-        return False
-    return True
-
-
 @app.route("/api/confirmed-weeks-stats")
 def confirmed_weeks_stats():
-    """주차별 탭별 건수+TOP3 반환. analytics_cache 공유로 빠른 로딩.
+    """주차별 탭별 건수+TOP3 반환. DB에서 직접 조회.
 
     파일 월 == 주차 레이블 월인 경우만 집계.
     예) 3월1주(2/26~3/4) 데이터는 3월 파일에 전부 삽입되므로 3월 파일만 기준으로 함.
@@ -532,16 +482,7 @@ def confirmed_weeks_stats():
         import re as _re
         from analytics import get_all_historical_stats
 
-        # cw_stats_cache 유효하면 즉시 반환
-        if _cw_stats_cache_valid():
-            try:
-                with open(_CW_STATS_CACHE_PATH, "r", encoding="utf-8") as f:
-                    return jsonify(json.load(f))
-            except Exception:
-                pass
-
         cw = load_confirmed_weeks()
-        # analytics_cache 공유 (이미 캐시돼 있으면 파일 읽기 없음)
         all_stats = get_all_historical_stats()
 
         week_map = {}
@@ -629,13 +570,6 @@ def confirmed_weeks_stats():
             })
 
         payload = {"ok": True, "weeks": result}
-        # 캐시 저장
-        try:
-            with open(_CW_STATS_CACHE_PATH, "w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, default=str)
-        except Exception:
-            pass
-
         from flask import make_response
         resp = make_response(jsonify(payload))
         resp.headers["Cache-Control"] = "no-store"
@@ -813,17 +747,17 @@ def fault_type_stats():
 
 @app.route("/api/export-confirmed")
 def export_confirmed():
-    """confirmed_weeks.json 다운로드."""
-    if not os.path.exists(CONFIRMED_WEEKS_FILE):
-        return jsonify({"ok": False, "error": "파일 없음"}), 404
-    return send_file(CONFIRMED_WEEKS_FILE, as_attachment=True,
-                     download_name="confirmed_weeks.json",
-                     mimetype="application/json")
+    """confirmed_weeks DB 내용을 JSON으로 다운로드."""
+    data = _db.load_confirmed_weeks()
+    response = make_response(json.dumps(data, ensure_ascii=False, indent=2))
+    response.headers["Content-Type"] = "application/json"
+    response.headers["Content-Disposition"] = "attachment; filename=confirmed_weeks.json"
+    return response
 
 
 @app.route("/api/import-confirmed", methods=["POST"])
 def import_confirmed():
-    """confirmed_weeks.json 업로드 후 캐시 재생성."""
+    """confirmed_weeks.json 업로드 → DB에 저장."""
     import json as _json
     f = request.files.get("file")
     if not f:
@@ -832,8 +766,10 @@ def import_confirmed():
         data = _json.loads(f.read().decode("utf-8"))
     except Exception as e:
         return jsonify({"ok": False, "error": f"JSON 파싱 오류: {e}"}), 400
-    save_confirmed_weeks(data)
-    _trigger_cache_refresh()
+    # DB에 반영 (기존 데이터 유지하며 추가)
+    for filename, weeks in data.items():
+        for week in weeks:
+            _db.add_confirmed_week(filename, week)
     return jsonify({"ok": True, "imported": len(data)})
 
 

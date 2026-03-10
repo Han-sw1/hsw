@@ -436,6 +436,18 @@ def insert_into_monthly(final_tabs, monthly_filename, mode="daily", week_label=N
     if updates:
         _update_xlsx_sheets(file_path, updates)
 
+    # DB 통계 갱신
+    try:
+        import database as db
+        from analytics import read_monthly_stats, _parse_ym
+        year, month = _parse_ym(monthly_filename)
+        if year:
+            stats = read_monthly_stats(monthly_filename)
+            if stats:
+                db.upsert_file_stats(monthly_filename, year, month, stats)
+    except Exception as e:
+        print(f"[DB] 통계 갱신 오류 ({monthly_filename}): {e}")
+
     return report
 
 
