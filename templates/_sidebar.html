@@ -1,10 +1,4 @@
 <aside class="sidebar">
-  <div class="sidebar-user">
-    <div class="sidebar-user-name">{{ current_user.name }}</div>
-    {% if current_user.is_admin %}
-    <span class="sidebar-user-badge">관리자</span>
-    {% endif %}
-  </div>
   <nav class="sidebar-nav">
     <a href="/" class="nav-item {% if active_page == 'index' %}active{% endif %}">
       <span class="nav-icon">&#127968;</span> 대시보드

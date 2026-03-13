@@ -64,11 +64,11 @@
       </a>
       <div class="header-title">단말기 장애 자동화 시스템</div>
       <div class="header-right">
-        <div style="display:flex;flex-direction:column;align-items:flex-end;line-height:1.2">
-          <span style="font-size:13px;font-weight:700;color:var(--gray-dark)">{{ current_user.name }}</span>
-          {% if current_user.is_admin %}
-          <span style="font-size:10px;font-weight:700;color:var(--primary);background:var(--primary-light);padding:1px 6px;border-radius:4px;margin-top:1px">관리자</span>
-          {% endif %}
+        <button class="theme-toggle" id="themeToggle" title="다크모드 전환">☀️</button>
+        <div class="header-divider"></div>
+        <div class="header-user">
+          <span class="header-user-name">{{ current_user.name }}</span>
+          {% if current_user.is_admin %}<span class="header-user-badge">관리자</span>{% endif %}
         </div>
       </div>
     </div>
@@ -365,5 +365,6 @@
   </script>
   <script src="/static/js/xlsx.min.js"></script>
   <script src="/static/js/app.js"></script>
+  <script src="/static/js/theme.js"></script>
 </body>
 </html>
