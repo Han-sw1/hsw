@@ -34,14 +34,23 @@
 
   function isMobile() { return window.innerWidth <= MOBILE_BP; }
 
-  function closeMobile() {
-    document.body.classList.remove('sidebar-mobile-open');
+  function initSidebar() {
+    if (isMobile()) {
+      // 모바일: desktop 클래스 제거, 기본 숨김 상태
+      document.body.classList.remove('sidebar-collapsed');
+      document.body.classList.remove('sidebar-mobile-open');
+    } else {
+      // 데스크탑: 저장된 상태 복원
+      document.body.classList.remove('sidebar-mobile-open');
+      if (localStorage.getItem(STORAGE_KEY) === 'closed') {
+        document.body.classList.add('sidebar-collapsed');
+      } else {
+        document.body.classList.remove('sidebar-collapsed');
+      }
+    }
   }
 
-  // 데스크탑: 저장된 상태 복원
-  if (!isMobile() && localStorage.getItem(STORAGE_KEY) === 'closed') {
-    document.body.classList.add('sidebar-collapsed');
-  }
+  initSidebar();
 
   if (btn) {
     btn.addEventListener('click', function() {
@@ -54,15 +63,15 @@
     });
   }
 
-  // 백드롭 클릭 시 닫기
   if (backdrop) {
-    backdrop.addEventListener('click', closeMobile);
+    backdrop.addEventListener('click', function() {
+      document.body.classList.remove('sidebar-mobile-open');
+    });
   }
 
-  // 화면 크기 변경 시 모바일 오버레이 정리
+  let resizeTimer;
   window.addEventListener('resize', function() {
-    if (!isMobile()) {
-      closeMobile();
-    }
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(initSidebar, 100);
   });
 })();
