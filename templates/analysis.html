@@ -178,9 +178,25 @@
   </style>
 </head>
 <body>
-<div class="app-layout">
-  {% include '_sidebar.html' %}
-  <div class="app-main">
+  <header class="header">
+    <div class="header-inner">
+      <a class="logo-area" href="/">
+        <img src="/static/logo.png" alt="ATEC 에이텍모빌리티" class="logo-img">
+      </a>
+      <div class="header-title">장애 분석 대시보드</div>
+      <div class="header-right">
+        <a href="/" class="nav-back">&#8592; 메인으로</a>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;margin-left:8px;line-height:1.2">
+          <span style="font-size:13px;font-weight:700;color:var(--gray-dark)">{{ current_user.name }}</span>
+          {% if current_user.is_admin %}
+          <span style="font-size:10px;font-weight:700;color:var(--primary);background:var(--primary-light);padding:1px 6px;border-radius:4px;margin-top:1px">관리자</span>
+          {% endif %}
+        </div>
+        <a href="/logout" class="btn-icon" title="로그아웃" style="font-size:15px;text-decoration:none;margin-left:4px">&#128275;</a>
+      </div>
+    </div>
+  </header>
+
   <main class="main">
     <div id="loadingBar" class="loading-bar">데이터를 불러오는 중입니다...</div>
     <div id="dashContent" style="display:none">
@@ -284,8 +300,6 @@
     </div>
   </main>
 
-  </div>{# app-main #}
-</div>{# app-layout #}
   <script src="/static/js/analysis.js?v=20260310i"></script>
 </body>
 </html>
