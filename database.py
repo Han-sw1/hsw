@@ -46,6 +46,15 @@ def init_db():
                 updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (filename, tab_name)
             );
+
+            CREATE TABLE IF NOT EXISTS users (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                username      TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                name          TEXT NOT NULL DEFAULT '',
+                is_admin      INTEGER NOT NULL DEFAULT 0,
+                created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
         """)
 
 
@@ -160,6 +169,54 @@ def is_db_empty():
         ).fetchone()
     return row is None
 
+
+# ── users ─────────────────────────────────────────────────────────────────────
+
+def create_user(username, password_hash, name=""):
+    with _lock:
+        with _connect() as conn:
+            try:
+                conn.execute(
+                    "INSERT INTO users (username, password_hash, name) VALUES (?, ?, ?)",
+                    (username, password_hash, name),
+                )
+                conn.commit()
+                return True
+            except sqlite3.IntegrityError:
+                return False  # 중복 username
+
+
+def set_admin(username, is_admin=True):
+    with _lock:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE users SET is_admin=? WHERE username=?",
+                (1 if is_admin else 0, username),
+            )
+            conn.commit()
+
+
+def get_user_by_username(username):
+    with _connect() as conn:
+        return conn.execute(
+            "SELECT * FROM users WHERE username=?", (username,)
+        ).fetchone()
+
+
+def get_user_by_id(user_id):
+    with _connect() as conn:
+        return conn.execute(
+            "SELECT * FROM users WHERE id=?", (user_id,)
+        ).fetchone()
+
+
+def count_users():
+    with _connect() as conn:
+        row = conn.execute("SELECT COUNT(*) as cnt FROM users").fetchone()
+    return row["cnt"] if row else 0
+
+
+# ── migrate ───────────────────────────────────────────────────────────────────
 
 def migrate_excel_stats():
     """모든 월간 Excel 파일에서 통계를 읽어 DB에 저장 (1회 마이그레이션)."""

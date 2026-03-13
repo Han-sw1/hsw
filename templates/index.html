@@ -67,6 +67,13 @@
         <a href="/analysis" class="btn btn-secondary btn-sm">&#128200; 분석 대시보드</a>
         <a href="/rawdata" class="btn btn-secondary btn-sm">&#128196; 전체 접수 현황</a>
         <button class="btn-icon" id="btnSettings" title="기준파일 경로 설정">&#9881;</button>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;margin-left:4px;line-height:1.2">
+          <span style="font-size:13px;font-weight:700;color:var(--gray-dark)">{{ current_user.name }}</span>
+          {% if current_user.is_admin %}
+          <span style="font-size:10px;font-weight:700;color:var(--primary);background:var(--primary-light);padding:1px 6px;border-radius:4px;margin-top:1px">관리자</span>
+          {% endif %}
+        </div>
+        <a href="/logout" class="btn-icon" title="로그아웃" style="font-size:15px;text-decoration:none">&#128275;</a>
       </div>
     </div>
   </header>
@@ -273,7 +280,8 @@
       </div>
     </section>
 
-    <!-- 월간 파일 업데이트 -->
+    <!-- 월간 파일 업데이트 (관리자 전용) -->
+    {% if current_user.is_admin %}
     <section class="card" id="monthlyCard" style="display:none">
       <div class="card-header">
         <span class="card-icon">&#128197;</span>
@@ -338,6 +346,7 @@
         </div>
       </div>
     </section>
+    {% endif %}
 
     <!-- 로딩 -->
     <div class="loading-overlay" id="loadingOverlay" style="display:none">
@@ -350,6 +359,9 @@
     <div class="toast" id="toast"></div>
   </main>
 
+  <script>
+    window.IS_ADMIN = {{ 'true' if current_user.is_admin else 'false' }};
+  </script>
   <script src="/static/js/xlsx.min.js"></script>
   <script src="/static/js/app.js"></script>
 </body>

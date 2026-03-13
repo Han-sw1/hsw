@@ -1,6 +1,9 @@
-from flask import Flask, render_template, request, jsonify, send_file, make_response
+from flask import Flask, render_template, request, jsonify, send_file, make_response, redirect, url_for, session
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 import os
 import shutil
+import re as _re_auth
 
 _BASE_DIR = os.environ.get("DATA_DIR", os.path.dirname(__file__))
 _RESULTS_DIR = os.path.join(_BASE_DIR, "results")
@@ -47,6 +50,29 @@ DEFAULT_CONFIG = {
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB
+app.secret_key = os.environ.get("SECRET_KEY", "atmo-secret-key-change-in-prod-2024")
+
+# ── Flask-Login 설정 ──────────────────────────────────────────────────────────
+login_manager = LoginManager(app)
+login_manager.login_view = "login_page"
+login_manager.login_message = None
+
+
+class User(UserMixin):
+    def __init__(self, row):
+        self.id = row["id"]
+        self.username = row["username"]
+        self.name = row["name"]
+        self.is_admin = bool(row["is_admin"])
+
+    def get_id(self):
+        return str(self.id)
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    row = _db.get_user_by_id(int(user_id))
+    return User(row) if row else None
 
 # DB 초기화 (백그라운드)
 def _startup_init():
@@ -102,7 +128,64 @@ def get_reference_paths():
     return criteria, cits
 
 
+# ── 인증 라우트 ───────────────────────────────────────────────────────────────
+
+@app.route("/login", methods=["GET", "POST"])
+def login_page():
+    if current_user.is_authenticated:
+        return redirect(url_for("index"))
+    error = None
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        row = _db.get_user_by_username(username)
+        if row and check_password_hash(row["password_hash"], password):
+            login_user(User(row), remember=True)
+            return redirect(request.args.get("next") or url_for("index"))
+        error = "아이디 또는 비밀번호가 올바르지 않습니다."
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for("login_page"))
+
+
+@app.route("/signup", methods=["GET", "POST"])
+def signup_page():
+    if current_user.is_authenticated:
+        return redirect(url_for("index"))
+    error = None
+    success = None
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        name = request.form.get("name", "").strip()
+        password = request.form.get("password", "")
+        password2 = request.form.get("password2", "")
+
+        if not _re_auth.match(r'^[a-zA-Z0-9_]{4,20}$', username):
+            error = "아이디는 영문/숫자/언더스코어 4~20자로 입력해주세요."
+        elif not name:
+            error = "이름을 입력해주세요."
+        elif len(password) < 6:
+            error = "비밀번호는 6자 이상이어야 합니다."
+        elif password != password2:
+            error = "비밀번호가 일치하지 않습니다."
+        else:
+            ok = _db.create_user(username, generate_password_hash(password), name)
+            if ok:
+                success = f"'{name}' 님, 회원가입이 완료되었습니다. 로그인해주세요."
+            else:
+                error = "이미 사용 중인 아이디입니다."
+    return render_template("signup.html", error=error, success=success)
+
+
+# ── 메인 페이지 ───────────────────────────────────────────────────────────────
+
 @app.route("/")
+@login_required
 def index():
     cfg = load_config()
     return render_template("index.html", config=cfg)
@@ -297,7 +380,10 @@ def process():
 
 
 @app.route("/api/insert-monthly", methods=["POST"])
+@login_required
 def insert_monthly():
+    if not current_user.is_admin:
+        return jsonify({"error": "관리자만 사용할 수 있습니다."}), 403
     data = request.json
     result_key = data.get("result_key")
     monthly_filename = data.get("monthly_filename")
@@ -391,7 +477,10 @@ def get_confirmed_weeks():
 
 
 @app.route("/api/confirm-week", methods=["POST"])
+@login_required
 def confirm_week():
+    if not current_user.is_admin:
+        return jsonify({"error": "관리자만 사용할 수 있습니다."}), 403
     data = request.json
     filename = data.get("monthly_filename")
     week = data.get("week_label")
@@ -402,7 +491,10 @@ def confirm_week():
 
 
 @app.route("/api/unconfirm-week", methods=["POST"])
+@login_required
 def unconfirm_week():
+    if not current_user.is_admin:
+        return jsonify({"error": "관리자만 사용할 수 있습니다."}), 403
     data = request.json
     filename = data.get("monthly_filename")
     week = data.get("week_label")
@@ -429,7 +521,10 @@ def cleanup_monthly_route():
 
 
 @app.route("/api/delete-weekly", methods=["POST"])
+@login_required
 def delete_weekly_route():
+    if not current_user.is_admin:
+        return jsonify({"error": "관리자만 사용할 수 있습니다."}), 403
     data = request.json
     filename = data.get("monthly_filename")
     week = data.get("week_label")
@@ -558,6 +653,7 @@ def confirmed_weeks_stats():
 
 
 @app.route("/analysis")
+@login_required
 def analysis_page():
     return render_template("analysis.html")
 
@@ -637,6 +733,7 @@ def download_monthly(filename):
 
 
 @app.route("/rawdata")
+@login_required
 def rawdata_page():
     return render_template("rawdata.html")
 
