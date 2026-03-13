@@ -6,7 +6,7 @@
   <title>ATEC 장애 분석 대시보드</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/style.css?v=20260310b">
+  <link rel="stylesheet" href="/static/css/style.css?v=20260313">
   <script src="/static/js/chart.min.js"></script>
   <style>
     .analysis-grid {
@@ -14,9 +14,11 @@
       grid-template-columns: 1fr 1fr;
       gap: 18px;
       margin-top: 6px;
+      min-width: 0;
     }
-    @media (max-width: 900px) { .analysis-grid { grid-template-columns: 1fr; } }
-    .chart-box { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow); padding: 22px; }
+    .analysis-grid > * { min-width: 0; }
+    @media (max-width: 1100px) { .analysis-grid { grid-template-columns: 1fr; } }
+    .chart-box { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow); padding: 22px; min-width: 0; overflow: hidden; }
     .chart-title { font-size: 15px; font-weight: 700; color: var(--gray-dark); margin-bottom: 16px; }
     .chart-canvas-wrap { position: relative; height: 300px; }
     .filter-bar {

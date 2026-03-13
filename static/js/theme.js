@@ -59,6 +59,7 @@
       } else {
         const collapsed = document.body.classList.toggle('sidebar-collapsed');
         localStorage.setItem(STORAGE_KEY, collapsed ? 'closed' : 'open');
+        setTimeout(function() { window.dispatchEvent(new Event('resize')); }, 260);
       }
     });
   }

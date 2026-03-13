@@ -6,10 +6,11 @@
   <title>ATEC 전체 접수 현황</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/style.css?v=20260310b">
+  <link rel="stylesheet" href="/static/css/style.css?v=20260313">
   <style>
-    .rd-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:6px; }
-    @media(max-width:900px){.rd-grid{grid-template-columns:1fr;}}
+    .rd-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:6px; min-width:0; }
+    .rd-grid > * { min-width:0; overflow:hidden; }
+    @media(max-width:1100px){.rd-grid{grid-template-columns:1fr;}}
     .chart-box { background:var(--white); border-radius:var(--radius); box-shadow:var(--shadow); padding:22px; }
     .full-width { grid-column:1/-1; }
     .chart-title { font-size:15px; font-weight:700; color:var(--gray-dark); margin-bottom:16px; }
