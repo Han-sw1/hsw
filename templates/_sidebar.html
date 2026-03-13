@@ -1,25 +1,48 @@
 <aside class="sidebar">
   <nav class="sidebar-nav">
     <a href="/" class="nav-item {% if active_page == 'index' %}active{% endif %}">
-      <span class="nav-icon">&#127968;</span> 대시보드
+      <svg class="nav-icon" viewBox="0 0 20 20">
+        <rect x="2" y="2" width="7" height="7" rx="1.2"/><rect x="11" y="2" width="7" height="7" rx="1.2"/>
+        <rect x="2" y="11" width="7" height="7" rx="1.2"/><rect x="11" y="11" width="7" height="7" rx="1.2"/>
+      </svg>
+      대시보드
     </a>
+
     <div class="nav-section-label">분석</div>
     <a href="/analysis" class="nav-item {% if active_page == 'analysis' %}active{% endif %}">
-      <span class="nav-icon">&#128202;</span> 분석 대시보드
+      <svg class="nav-icon" viewBox="0 0 20 20">
+        <polyline points="2,16 2,10 5.5,10 5.5,16"/><polyline points="7.5,16 7.5,5 11,5 11,16"/>
+        <polyline points="13,16 13,12 16.5,12 16.5,16"/><line x1="2" y1="16" x2="16.5" y2="16"/>
+      </svg>
+      분석 대시보드
     </a>
     <a href="/rawdata" class="nav-item {% if active_page == 'rawdata' %}active{% endif %}">
-      <span class="nav-icon">&#128196;</span> 전체 접수 현황
+      <svg class="nav-icon" viewBox="0 0 20 20">
+        <rect x="4" y="2" width="12" height="16" rx="1.5"/>
+        <line x1="7" y1="7" x2="13" y2="7"/><line x1="7" y1="10" x2="13" y2="10"/><line x1="7" y1="13" x2="11" y2="13"/>
+      </svg>
+      전체 접수 현황
     </a>
+
     {% if current_user.is_admin %}
     <div class="nav-section-label">설정</div>
     <button class="nav-item" id="btnSettings">
-      <span class="nav-icon">&#9881;</span> 기준파일 설정
+      <svg class="nav-icon" viewBox="0 0 20 20">
+        <circle cx="10" cy="10" r="2.8"/>
+        <path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.93 4.93l1.41 1.41M13.66 13.66l1.41 1.41M4.93 15.07l1.41-1.41M13.66 6.34l1.41-1.41"/>
+      </svg>
+      기준파일 설정
     </button>
     {% endif %}
   </nav>
+
   <div class="sidebar-footer">
     <a href="/logout" class="nav-item nav-item-logout">
-      <span class="nav-icon">&#128275;</span> 로그아웃
+      <svg class="nav-icon" viewBox="0 0 20 20">
+        <path d="M8 3H5a1 1 0 00-1 1v12a1 1 0 001 1h3"/>
+        <polyline points="13,7 17,10 13,13"/><line x1="17" y1="10" x2="7" y2="10"/>
+      </svg>
+      로그아웃
     </a>
   </div>
 </aside>
