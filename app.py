@@ -188,7 +188,7 @@ def signup_page():
 @login_required
 def index():
     cfg = load_config()
-    return render_template("index.html", config=cfg)
+    return render_template("index.html", config=cfg, active_page="index")
 
 
 @app.route("/api/config", methods=["GET"])
@@ -655,7 +655,7 @@ def confirmed_weeks_stats():
 @app.route("/analysis")
 @login_required
 def analysis_page():
-    return render_template("analysis.html")
+    return render_template("analysis.html", active_page="analysis")
 
 
 @app.route("/api/analysis-data")
@@ -735,7 +735,7 @@ def download_monthly(filename):
 @app.route("/rawdata")
 @login_required
 def rawdata_page():
-    return render_template("rawdata.html")
+    return render_template("rawdata.html", active_page="rawdata")
 
 @app.route("/api/rawdata-stats")
 def rawdata_stats():

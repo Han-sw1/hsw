@@ -419,3 +419,98 @@ body {
 .toast.show { transform: translateX(-50%) translateY(0); }
 .toast.error { background: var(--primary); }
 .toast.success { background: #1E7A3C; }
+
+/* ─── SIDEBAR LAYOUT ─── */
+.app-layout {
+  display: flex;
+  min-height: 100vh;
+}
+.sidebar {
+  width: 220px;
+  min-width: 220px;
+  background: var(--white);
+  border-right: 1.5px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0; left: 0;
+  height: 100vh;
+  z-index: 200;
+  overflow-y: auto;
+}
+.app-main {
+  margin-left: 220px;
+  flex: 1;
+  min-width: 0;
+  min-height: 100vh;
+}
+.sidebar-header {
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sidebar-logo-img { height: 30px; width: auto; }
+.sidebar-app-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray);
+  letter-spacing: 0.2px;
+}
+.sidebar-user {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-user-name {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--gray-dark);
+}
+.sidebar-user-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--primary);
+  background: var(--primary-light);
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-top: 4px;
+}
+.sidebar-nav { flex: 1; padding: 10px 0; }
+.nav-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gray);
+  padding: 10px 20px 4px;
+  letter-spacing: 0.3px;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin: 1px 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gray-dark);
+  text-decoration: none;
+  border-radius: 8px;
+  transition: background 0.15s, color 0.15s;
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: calc(100% - 20px);
+  font-family: inherit;
+  text-align: left;
+  line-height: 1.4;
+}
+.nav-item:hover { background: var(--gray-light); color: var(--primary); }
+.nav-item.active { background: var(--primary-light); color: var(--primary); }
+.nav-icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
+.sidebar-footer {
+  padding: 10px 10px 16px;
+  border-top: 1px solid var(--border);
+}
+.nav-item-logout { color: var(--primary); }
+.nav-item-logout:hover { background: var(--primary-light); }

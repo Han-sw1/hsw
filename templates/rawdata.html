@@ -65,19 +65,9 @@
   </style>
 </head>
 <body>
-  <header class="header">
-    <div class="header-inner">
-      <a class="logo-area" href="/">
-        <img src="/static/logo.png" alt="ATEC 에이텍모빌리티" class="logo-img">
-      </a>
-      <div class="header-title">전체 접수 현황</div>
-      <div class="header-right">
-        <a href="/" class="nav-back">&#8592; 메인으로</a>
-        <a href="/logout" class="btn-icon" title="로그아웃" style="font-size:15px;text-decoration:none;margin-left:4px">&#128275;</a>
-      </div>
-    </div>
-  </header>
-
+<div class="app-layout">
+  {% include '_sidebar.html' %}
+  <div class="app-main">
   <main class="main">
     <div id="loadingBar" class="loading-bar">데이터를 불러오는 중입니다...</div>
     <div id="pageContent" style="display:none">
@@ -123,6 +113,8 @@
     </div>
   </main>
 
+  </div>{# app-main #}
+</div>{# app-layout #}
   <script src="/static/js/rawdata.js?v=20260310a"></script>
 </body>
 </html>
