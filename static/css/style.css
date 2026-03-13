@@ -440,12 +440,28 @@ body {
   height: calc(100vh - 67px);
   z-index: 90;
   overflow-y: auto;
+  transition: transform 0.25s ease;
+}
+body.sidebar-collapsed .sidebar {
+  transform: translateX(-200px);
 }
 .page-content {
   margin-left: 200px;
   flex: 1;
   min-width: 0;
+  transition: margin-left 0.25s ease;
 }
+body.sidebar-collapsed .page-content {
+  margin-left: 0;
+}
+.sidebar-toggle-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--gray); padding: 6px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.2s, color 0.2s; flex-shrink: 0;
+}
+.sidebar-toggle-btn:hover { background: var(--gray-light); color: var(--primary); }
+.sidebar-toggle-btn svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; }
 .sidebar-user {
   padding: 16px 16px 12px;
   border-bottom: 1px solid var(--border);
