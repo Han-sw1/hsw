@@ -21,6 +21,7 @@ body {
   background: #ECEDF2;
   color: var(--gray-dark);
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 /* ─── HEADER ─── */
@@ -438,7 +439,7 @@ body {
   top: 67px;
   left: 0;
   height: calc(100vh - 67px);
-  z-index: 90;
+  z-index: 200;
   overflow-y: auto;
   transition: transform 0.25s ease;
 }
@@ -449,10 +450,53 @@ body.sidebar-collapsed .sidebar {
   margin-left: 200px;
   flex: 1;
   min-width: 0;
+  overflow-x: hidden;
   transition: margin-left 0.25s ease;
 }
 body.sidebar-collapsed .page-content {
   margin-left: 0;
+}
+/* 사이드바 백드롭 (모바일 오버레이 시 사용) */
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 67px 0 0 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 199;
+}
+
+/* ─── 반응형 ─── */
+/* 태블릿 이하: 사이드바 오버레이 모드 */
+@media (max-width: 900px) {
+  .sidebar {
+    transform: translateX(-200px);
+    box-shadow: 4px 0 20px rgba(0,0,0,0.15);
+    z-index: 300;
+  }
+  body.sidebar-mobile-open .sidebar {
+    transform: translateX(0);
+  }
+  body.sidebar-mobile-open .sidebar-backdrop {
+    display: block;
+  }
+  .page-content {
+    margin-left: 0 !important;
+  }
+  /* desktop 토글 클래스 무시 */
+  body.sidebar-collapsed .sidebar {
+    transform: translateX(-200px);
+  }
+}
+/* 모바일: 헤더 타이틀 숨김 */
+@media (max-width: 600px) {
+  .header-inner {
+    grid-template-columns: auto 1fr;
+  }
+  .header-title { display: none; }
+  .header-user-name { font-size: 12px; }
+}
+@media (max-width: 900px) and (min-width: 601px) {
+  .header-title { font-size: 16px; }
 }
 .sidebar-toggle-btn {
   background: none; border: none; cursor: pointer;

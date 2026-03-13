@@ -29,16 +29,40 @@
 (function() {
   const STORAGE_KEY = 'atmo_sidebar';
   const btn = document.getElementById('sidebarToggle');
+  const backdrop = document.getElementById('sidebarBackdrop');
+  const MOBILE_BP = 900;
 
-  // 저장된 상태 복원
-  if (localStorage.getItem(STORAGE_KEY) === 'closed') {
+  function isMobile() { return window.innerWidth <= MOBILE_BP; }
+
+  function closeMobile() {
+    document.body.classList.remove('sidebar-mobile-open');
+  }
+
+  // 데스크탑: 저장된 상태 복원
+  if (!isMobile() && localStorage.getItem(STORAGE_KEY) === 'closed') {
     document.body.classList.add('sidebar-collapsed');
   }
 
   if (btn) {
     btn.addEventListener('click', function() {
-      const collapsed = document.body.classList.toggle('sidebar-collapsed');
-      localStorage.setItem(STORAGE_KEY, collapsed ? 'closed' : 'open');
+      if (isMobile()) {
+        document.body.classList.toggle('sidebar-mobile-open');
+      } else {
+        const collapsed = document.body.classList.toggle('sidebar-collapsed');
+        localStorage.setItem(STORAGE_KEY, collapsed ? 'closed' : 'open');
+      }
     });
   }
+
+  // 백드롭 클릭 시 닫기
+  if (backdrop) {
+    backdrop.addEventListener('click', closeMobile);
+  }
+
+  // 화면 크기 변경 시 모바일 오버레이 정리
+  window.addEventListener('resize', function() {
+    if (!isMobile()) {
+      closeMobile();
+    }
+  });
 })();
