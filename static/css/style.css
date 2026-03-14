@@ -461,7 +461,7 @@ body.sidebar-collapsed .page-content {
   width: 100%;
   max-width: 100vw;
 }
-/* 사이드바 백드롭 (모바일 오버레이 시 사용) */
+/* 사이드바 백드롭 */
 .sidebar-backdrop {
   display: none;
   position: fixed;

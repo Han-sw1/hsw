@@ -183,6 +183,11 @@
       margin-bottom: 16px;
       text-align: center;
     }
+    .alert.success {
+      background: #EBF7EE;
+      border-color: #a8d5b5;
+      color: #1E7A3C;
+    }
   </style>
 </head>
 <body>
@@ -195,6 +200,9 @@
     <div class="login-card">
       <h2>로그인</h2>
 
+      {% if signup_msg %}
+      <div class="alert success">{{ signup_msg }}</div>
+      {% endif %}
       {% if error %}
       <div class="alert">{{ error }}</div>
       {% endif %}

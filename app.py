@@ -135,6 +135,8 @@ def login_page():
     if current_user.is_authenticated:
         return redirect(url_for("index"))
     error = None
+    success = request.args.get("signup_success")
+    signup_msg = f"'{success}' 님, 회원가입이 완료되었습니다. 로그인해주세요." if success else None
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
@@ -143,7 +145,7 @@ def login_page():
             login_user(User(row), remember=True)
             return redirect(request.args.get("next") or url_for("index"))
         error = "아이디 또는 비밀번호가 올바르지 않습니다."
-    return render_template("login.html", error=error)
+    return render_template("login.html", error=error, signup_msg=signup_msg)
 
 
 @app.route("/logout")
@@ -151,6 +153,17 @@ def login_page():
 def logout():
     logout_user()
     return redirect(url_for("login_page"))
+
+
+@app.route("/check_username")
+def check_username():
+    username = request.args.get("username", "").strip()
+    if not _re_auth.match(r'^[a-zA-Z0-9_]{4,20}$', username):
+        return {"available": False, "message": "아이디 형식이 올바르지 않습니다."}
+    user = _db.get_user_by_username(username)
+    if user:
+        return {"available": False, "message": "이미 사용 중인 아이디입니다."}
+    return {"available": True, "message": "사용 가능한 아이디입니다."}
 
 
 @app.route("/signup", methods=["GET", "POST"])
@@ -176,7 +189,7 @@ def signup_page():
         else:
             ok = _db.create_user(username, generate_password_hash(password), name)
             if ok:
-                success = f"'{name}' 님, 회원가입이 완료되었습니다. 로그인해주세요."
+                return redirect(url_for("login_page", signup_success=name))
             else:
                 error = "이미 사용 중인 아이디입니다."
     return render_template("signup.html", error=error, success=success)

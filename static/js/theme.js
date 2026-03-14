@@ -27,7 +27,7 @@
 
 // 사이드바 열고 닫기
 (function() {
-  const STORAGE_KEY = 'atmo_sidebar';
+  const STORAGE_KEY = 'atmo_sidebar_v2';
   const btn = document.getElementById('sidebarToggle');
   const backdrop = document.getElementById('sidebarBackdrop');
   const MOBILE_BP = 900;
@@ -40,12 +40,12 @@
       document.body.classList.remove('sidebar-collapsed');
       document.body.classList.remove('sidebar-mobile-open');
     } else {
-      // 데스크탑: 저장된 상태 복원
+      // 데스크탑: 저장된 상태 복원 (기본값: 닫힘)
       document.body.classList.remove('sidebar-mobile-open');
-      if (localStorage.getItem(STORAGE_KEY) === 'closed') {
-        document.body.classList.add('sidebar-collapsed');
-      } else {
+      if (localStorage.getItem(STORAGE_KEY) === 'open') {
         document.body.classList.remove('sidebar-collapsed');
+      } else {
+        document.body.classList.add('sidebar-collapsed');
       }
     }
   }
