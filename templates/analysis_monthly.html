@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>월별 장애현황 - ATEC</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css?v=20260313">
+  <script src="/static/js/chart.min.js"></script>
+  <style>
+    .analysis-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:6px; min-width:0; }
+    .analysis-grid > * { min-width:0; }
+    @media(max-width:1100px){.analysis-grid{grid-template-columns:1fr;}}
+    .chart-box { background:var(--white); border-radius:var(--radius); box-shadow:var(--shadow); padding:22px; min-width:0; overflow:hidden; }
+    .chart-title { font-size:15px; font-weight:700; color:var(--gray-dark); margin-bottom:16px; }
+    .chart-canvas-wrap { position:relative; height:300px; }
+    .filter-bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; background:var(--white); border-radius:var(--radius); box-shadow:var(--shadow); padding:16px 22px; margin-bottom:4px; }
+    .filter-label { font-size:13px; font-weight:700; color:var(--gray-dark); white-space:nowrap; }
+    .tab-checks { display:flex; gap:8px; flex-wrap:wrap; }
+    .tab-check { display:inline-flex; align-items:center; gap:4px; padding:5px 12px; border-radius:6px; border:1.5px solid var(--border); font-size:12px; font-weight:600; cursor:pointer; user-select:none; background:var(--white); color:var(--gray-dark); transition:all 0.15s; }
+    .tab-check.active.seoul   { background:var(--primary); border-color:var(--primary); color:#fff; }
+    .tab-check.active.airport { background:var(--blue);    border-color:var(--blue);    color:#fff; }
+    .tab-check.active.regional{ background:var(--green);   border-color:var(--green);   color:#fff; }
+    .stats-month-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .stats-month-table th { background:var(--brand-gray); color:var(--white); padding:11px 14px; text-align:center; font-weight:700; white-space:nowrap; font-size:13px; }
+    .stats-month-table td { padding:10px 14px; border-bottom:1px solid var(--border); text-align:center; font-size:13px; }
+    .stats-month-table td:first-child { text-align:left; }
+    .stats-month-table tr:hover { background:var(--gray-light); }
+    .rate-cell { font-weight:700; font-size:13px; }
+    .rate-bad  { color:var(--primary); }
+    .rate-ok   { color:var(--green); }
+    .tab-label-analysis { display:inline-block; padding:4px 12px; border-radius:5px; font-size:13px; font-weight:700; white-space:nowrap; }
+    .tab-label-analysis.seoul   { background:#FDF0F5; color:var(--primary); border:1px solid #F0C0D4; }
+    .tab-label-analysis.airport { background:#EBF3FB; color:var(--blue);    border:1px solid #AACCE8; }
+    .tab-label-analysis.regional{ background:#EBF7EE; color:var(--green);   border:1px solid #A8D8B4; }
+    .compare-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .compare-table th { background:var(--brand-gray); color:#fff; padding:11px 16px; font-weight:700; white-space:nowrap; text-align:center; }
+    .compare-table td { padding:10px 16px; border-bottom:1px solid var(--border); text-align:center; vertical-align:middle; }
+    .compare-table tr:last-child td { border-bottom:none; font-weight:800; background:var(--gray-light); }
+    .compare-table tr:hover:not(:last-child) td { background:#FAFBFF; }
+    .cmp-count { font-weight:800; font-size:15px; }
+    .cmp-rate  { font-size:11px; color:var(--gray); display:block; margin-top:2px; }
+    .cmp-rate.bad  { color:var(--primary); }
+    .cmp-rate.ok   { color:var(--green); }
+    .cmp-diff { font-weight:800; font-size:14px; }
+    .cmp-bar  { display:inline-block; height:6px; border-radius:3px; margin-left:6px; vertical-align:middle; opacity:0.7; }
+    .diff-up   { color:var(--primary); font-weight:700; }
+    .diff-down { color:var(--green); font-weight:700; }
+    .diff-same { color:var(--gray); }
+    .month-sel { padding:8px 14px; border:1.5px solid var(--border); border-radius:6px; font-size:13px; font-family:inherit; background:var(--white); cursor:pointer; }
+    .month-sel:focus { outline:none; border-color:var(--primary); }
+    .full-width { grid-column:1/-1; }
+    .loading-bar { text-align:center; padding:60px; color:var(--gray); font-size:14px; }
+    .download-row { display:flex; flex-wrap:wrap; gap:8px; }
+    .btn-dl { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; border:1.5px solid var(--border); background:var(--white); color:var(--gray-dark); transition:all 0.15s; font-family:inherit; }
+    .btn-dl:hover { border-color:var(--primary); color:var(--primary); background:var(--primary-light); }
+    .btn-dl.confirmed { border-color:#FFD700; background:#FFFBEA; color:#7A4800; }
+    .btn-dl.confirmed:hover { background:#FFF3CD; }
+    /* 연도 구분 행 */
+    .year-divider td { background:var(--brand-gray); color:#fff; font-weight:800; font-size:13px; text-align:center; padding:7px 14px; }
+    /* 연도 필터 */
+    .year-seg { display:inline-flex; border-radius:10px; overflow:hidden; border:1.5px solid var(--border); background:var(--gray-light); padding:3px; gap:3px; }
+    .year-seg-btn { padding:5px 16px; border-radius:7px; border:none; font-size:12px; font-weight:700; cursor:pointer; background:transparent; color:var(--gray); font-family:inherit; transition:all 0.18s; }
+    .year-seg-btn.active { background:#fff; color:var(--primary); box-shadow:0 1px 4px rgba(0,0,0,0.13); }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="sidebar-toggle-btn" id="sidebarToggle" title="메뉴 열고 닫기">
+          <svg viewBox="0 0 20 20"><line x1="3" y1="5" x2="17" y2="5"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="3" y1="15" x2="17" y2="15"/></svg>
+        </button>
+        <a class="logo-area" href="/">
+          <img src="/static/logo.png" alt="ATEC 에이텍모빌리티" class="logo-img">
+        </a>
+      </div>
+      <div class="header-title">월별 장애현황</div>
+      <div class="header-right">
+        <button class="theme-toggle" id="themeToggle" title="다크모드 전환">☀️</button>
+        <div class="header-divider"></div>
+        <div class="header-user">
+          <span class="header-user-name">{{ current_user.name }}</span>
+          {% if current_user.is_admin %}<span class="header-user-badge">관리자</span>{% endif %}
+        </div>
+      </div>
+    </div>
+  </header>
+  <div class="page-body">
+  {% include '_sidebar.html' %}
+  <div class="page-content">
+  <main class="main">
+    <div id="loadingBar" class="loading-bar">데이터를 불러오는 중입니다...</div>
+    <div id="dashContent" style="display:none">
+
+      <!-- 탭 필터 + 연도 필터 -->
+      <div class="filter-bar">
+        <span class="filter-label">단말기 선택</span>
+        <div class="tab-checks" id="tabChecks"></div>
+        <button class="btn btn-secondary btn-sm" onclick="selectAllTabs()">전체</button>
+        <button class="btn btn-secondary btn-sm" onclick="clearAllTabs()">해제</button>
+      </div>
+
+      <div class="analysis-grid">
+        <!-- 월별 건수 차트 -->
+        <div class="chart-box">
+          <div class="chart-title">월별 장애 건수 추이</div>
+          <div class="chart-canvas-wrap"><canvas id="countChart"></canvas></div>
+        </div>
+        <!-- 월별 장애율 차트 -->
+        <div class="chart-box">
+          <div class="chart-title">월별 장애율(%) 추이</div>
+          <div class="chart-canvas-wrap"><canvas id="rateChart"></canvas></div>
+        </div>
+
+        <!-- 전체 월별 통계 테이블 -->
+        <div class="chart-box full-width">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+            <div class="chart-title" style="margin:0">전체 월별 통계 테이블</div>
+            <div id="statsYearSeg"></div>
+          </div>
+          <div id="statsTableWrap"></div>
+        </div>
+
+        <!-- 월별 단말기 상세 비교 -->
+        <div class="chart-box full-width">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+            <div class="chart-title" style="margin:0">월별 단말기 상세 비교</div>
+            <select class="month-sel" id="monthSelA" onchange="renderCompare()"></select>
+            <span style="font-size:13px;color:var(--gray)">vs</span>
+            <select class="month-sel" id="monthSelB" onchange="renderCompare()"></select>
+          </div>
+          <div style="overflow-x:auto"><table class="compare-table" id="compareGrid"></table></div>
+        </div>
+
+        <!-- 확정 파일 다운로드 -->
+        <div class="chart-box full-width">
+          <div class="chart-title" style="margin-bottom:12px">확정 데이터 파일 다운로드</div>
+          <div class="download-row" id="downloadRow"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+  </div>
+  </div>
+  <script src="/static/js/analysis_monthly.js?v=20260315"></script>
+  <script src="/static/js/theme.js"></script>
+</body>
+</html>

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>기종별 장애유형 - ATEC</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css?v=20260313">
+  <style>
+    .chart-box { background:var(--white); border-radius:var(--radius); box-shadow:var(--shadow); padding:22px; min-width:0; overflow:hidden; margin-bottom:18px; }
+    .chart-title { font-size:15px; font-weight:700; color:var(--gray-dark); margin-bottom:16px; }
+    .loading-bar { text-align:center; padding:60px; color:var(--gray); font-size:14px; }
+    .rd-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .rd-table th { background:var(--brand-gray); color:#fff; padding:10px 12px; text-align:center; font-weight:700; white-space:nowrap; font-size:12px; position:sticky; top:0; }
+    .rd-table td { padding:9px 12px; border-bottom:1px solid var(--border); text-align:center; }
+    .rd-table td:first-child { text-align:left; font-weight:600; color:var(--gray-dark); max-width:220px; word-break:keep-all; }
+    .rd-table tr:last-child td { border-bottom:none; font-weight:800; background:var(--gray-light); }
+    .rd-table tr:hover:not(:last-child) td { background:#FAFBFF; }
+    .rd-table .total-col { font-weight:800; font-size:14px; color:var(--primary); }
+    .filter-wrap { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+    .table-wrap { overflow:auto; max-height:500px; }
+    .empty-msg { color:var(--gray); font-size:13px; padding:20px 0; text-align:center; }
+    .tab-btn.b-tab.active  { background:#C8175C; border-color:#C8175C; }
+    .tab-btn.ap-tab.active { background:var(--blue); border-color:var(--blue); }
+    .tab-btn.rg-tab.active { background:var(--green); border-color:var(--green); }
+    .ft-seg { display:inline-flex; border-radius:10px; overflow:hidden; border:1.5px solid var(--border); background:var(--gray-light); padding:3px; gap:3px; }
+    .ft-seg-btn { padding:5px 16px; border-radius:7px; border:none; font-size:12px; font-weight:700; cursor:pointer; background:transparent; color:var(--gray); font-family:inherit; transition:all 0.18s; white-space:nowrap; }
+    .ft-seg-btn.active { background:#fff; color:var(--primary); box-shadow:0 1px 4px rgba(0,0,0,0.13); }
+    /* 연도 구분 */
+    .year-header { font-size:13px; font-weight:800; color:var(--gray); margin:18px 0 8px; padding-left:4px; border-left:3px solid var(--primary); padding-left:10px; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="sidebar-toggle-btn" id="sidebarToggle" title="메뉴 열고 닫기">
+          <svg viewBox="0 0 20 20"><line x1="3" y1="5" x2="17" y2="5"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="3" y1="15" x2="17" y2="15"/></svg>
+        </button>
+        <a class="logo-area" href="/">
+          <img src="/static/logo.png" alt="ATEC 에이텍모빌리티" class="logo-img">
+        </a>
+      </div>
+      <div class="header-title">기종별 장애유형</div>
+      <div class="header-right">
+        <button class="theme-toggle" id="themeToggle" title="다크모드 전환">☀️</button>
+        <div class="header-divider"></div>
+        <div class="header-user">
+          <span class="header-user-name">{{ current_user.name }}</span>
+          {% if current_user.is_admin %}<span class="header-user-badge">관리자</span>{% endif %}
+        </div>
+      </div>
+    </div>
+  </header>
+  <div class="page-body">
+  {% include '_sidebar.html' %}
+  <div class="page-content">
+  <main class="main">
+    <div id="loadingBar" class="loading-bar">데이터를 불러오는 중입니다...</div>
+    <div id="dashContent" style="display:none">
+
+      <!-- 단말기별 장애유형 -->
+      <div class="chart-box">
+        <div class="chart-title">&#128295; 단말기별 장애유형</div>
+        <div class="filter-wrap" style="align-items:flex-start;flex-wrap:wrap;gap:12px">
+          <div class="tab-group" style="flex:1;min-width:0" id="ftTabGroup"></div>
+          <div id="ftViewToggle"></div>
+        </div>
+        <!-- 연도 선택 -->
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+          <span style="font-size:13px;font-weight:700;color:var(--gray-dark)">기간</span>
+          <div id="ftYearSeg"></div>
+        </div>
+        <div class="table-wrap">
+          <table class="rd-table" id="ftTable"></table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+  </div>
+  </div>
+  <script src="/static/js/analysis_faulttype.js?v=20260315"></script>
+  <script src="/static/js/theme.js"></script>
+</body>
+</html>

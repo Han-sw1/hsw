@@ -187,7 +187,8 @@ function getTabClass(tab) {
 }
 
 // ─── 설정 모달 ───────────────────────────────────────
-document.getElementById('btnSettings').addEventListener('click', () => {
+const _btnSettings = document.getElementById('btnSettings');
+if (_btnSettings) _btnSettings.addEventListener('click', () => {
   document.getElementById('settingsModal').classList.add('open');
   // 서버에 저장된 기준파일 현황 로드
   fetch('/api/reference-files').then(r => r.json()).then(data => {
@@ -376,14 +377,16 @@ document.getElementById('btnProcess').addEventListener('click', async () => {
     renderSummary(data.summary || {});
     renderTabButtons();
     renderStats(statsData);
-    renderUploadComparison(data.upload_comments || [], data.week_comments || []);
-    setupMonthlySection();
+    renderUploadComparison(data.comparison || {});
+    if (window.IS_ADMIN) setupMonthlySection();
 
     document.getElementById('resultCard').style.display = 'block';
     document.getElementById('previewCard').style.display = 'block';
     document.getElementById('statsCard').style.display = 'block';
-    document.getElementById('monthlyCard').style.display = 'block';
-    document.getElementById('insertReport').style.display = 'none';
+    if (window.IS_ADMIN) {
+      document.getElementById('monthlyCard').style.display = 'block';
+      document.getElementById('insertReport').style.display = 'none';
+    }
 
     const firstTab = TAB_ORDER.find(t => previewData[t] && previewData[t].count > 0) || TAB_ORDER[0];
     selectTab(firstTab);
@@ -511,49 +514,78 @@ function renderStats(stats) {
   }).join('');
 }
 
-// ─── 신규 업로드 비교 코멘트 ─────────────────────────
-const CSTYLE_MAP = {
-  summary_bad:'bad', summary_good:'good', summary_same:'info',
-  tab_bad:'bad', tab_good:'good', tab_same:'info',
-  new_bad:'new', new_good:'new', new_same:'new',
-  alert:'alert', rate_info:'info', divider:'divider',
-};
-const CLBL_MAP = {
-  summary_bad:'전체▲', summary_good:'전체▼', summary_same:'전체→',
-  tab_bad:'증가▲', tab_good:'감소▼', tab_same:'유지→',
-  new_bad:'신규▲', new_good:'신규▼', new_same:'신규→',
-  alert:'경보⚠', rate_info:'장애율',
-};
+// ─── 업로드 데이터 비교 (새 UI) ──────────────────────
+function _tabLabelCls(tab) {
+  if (tab === '전체') return 'total';
+  if (tab.startsWith('서울')) return 'seoul';
+  if (tab.startsWith('공항')) return 'airport';
+  return 'regional';
+}
 
-function _renderCommentList(listEl, comments) {
-  if (!comments || !comments.length) {
-    listEl.innerHTML = '<li class="comment-item"><span class="comment-text" style="color:var(--gray)">데이터 없음</span></li>';
-    return;
-  }
-  listEl.innerHTML = comments.map(c => {
-    const cls = CSTYLE_MAP[c.type] || 'info';
-    const lbl = CLBL_MAP[c.type] || (c.tag || '');
-    if (c.type === 'divider') {
-      return `<li class="comment-item divider-row"><span class="comment-text">${c.text}</span></li>`;
-    }
-    return `<li class="comment-item">
-      <span class="c-tag ${cls}">${lbl}</span>
-      <span class="comment-text">${c.text}</span>
-    </li>`;
+function _diffCell(diff, pct) {
+  if (diff === 0) return `<span class="cmp-diff-same">→ 동일</span>`;
+  const sign = diff > 0 ? '▲' : '▼';
+  const cls  = diff > 0 ? 'cmp-diff-up' : 'cmp-diff-down';
+  const pctStr = pct != null ? ` (${Math.abs(pct)}%)` : '';
+  return `<span class="${cls}">${sign}${Math.abs(diff)}건${pctStr}</span>`;
+}
+
+function renderUploadComparison(comparison) {
+  const card = document.getElementById('uploadCompareCard');
+  const cmps = (comparison && comparison.comparisons) || [];
+  if (!cmps.length) { card.style.display = 'none'; return; }
+
+  card.style.display = 'block';
+  const tabBtns = document.getElementById('cmpTabBtns');
+  const panels  = document.getElementById('cmpPanels');
+
+  // 탭 버튼
+  const TYPE_ICON = { day: '☀', week: '📅', month: '📊' };
+  tabBtns.innerHTML = cmps.map((c, i) =>
+    `<button class="cmp-tab-btn${i === 0 ? ' active' : ''}" onclick="showCmpTab(${i})">
+      ${TYPE_ICON[c.type] || ''} ${c.label}
+      <span class="cmp-period">${c.prev_label} → ${c.cur_label}</span>
+    </button>`
+  ).join('');
+
+  // 패널
+  panels.innerHTML = cmps.map((c, i) => {
+    const thPrev = `<th>${c.prev_label}</th>`;
+    const thCur  = `<th>${c.cur_label}</th>`;
+    const rows = c.rows.map(r => {
+      const cls = _tabLabelCls(r.tab);
+      // 오류유형 칩
+      let faultHtml = '';
+      if (!r.is_total && r.fault_changes && r.fault_changes.length) {
+        const chips = r.fault_changes.map(f => {
+          const chipCls = f.diff > 0 ? 'up' : 'down';
+          const arrow = f.diff > 0 ? '▲' : '▼';
+          return `<span class="fault-chip ${chipCls}">${f.name} ${arrow}${Math.abs(f.diff)}</span>`;
+        }).join('');
+        faultHtml = `<div class="fault-chips">${chips}</div>`;
+      }
+      const tabCell = r.is_total
+        ? `<td><span class="cmp-tab-label total">전체</span></td>`
+        : `<td><span class="cmp-tab-label ${cls}">${r.tab}</span>${faultHtml}</td>`;
+      return `<tr class="${r.is_total ? 'cmp-total' : ''}">
+        ${tabCell}
+        <td class="cmp-num">${r.prev}</td>
+        <td class="cmp-num">${r.cur}</td>
+        <td>${_diffCell(r.diff, r.pct)}</td>
+      </tr>`;
+    }).join('');
+    return `<div class="cmp-panel${i === 0 ? ' active' : ''}">
+      <table class="cmp-table">
+        <thead><tr><th>단말</th>${thPrev}${thCur}<th>변화</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
   }).join('');
 }
 
-function renderUploadComparison(comments, weekComments) {
-  const card = document.getElementById('uploadCompareCard');
-  const hasMonth = comments && comments.length > 0;
-  const hasWeek  = weekComments && weekComments.length > 0;
-  if (!hasMonth && !hasWeek) {
-    card.style.display = 'none';
-    return;
-  }
-  card.style.display = 'block';
-  _renderCommentList(document.getElementById('uploadCommentList'), comments);
-  _renderCommentList(document.getElementById('weekCommentList'), weekComments);
+function showCmpTab(idx) {
+  document.querySelectorAll('.cmp-tab-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
+  document.querySelectorAll('.cmp-panel').forEach((p, i) => p.classList.toggle('active', i === idx));
 }
 
 // ─── 현황 요약 (홈 빈 공간) ──────────────────────────
@@ -650,12 +682,15 @@ async function setupMonthlySection() {
   monthlyFilesInfo = data.files || [];
 
   const sel = document.getElementById('monthlyFileSelect');
-  if (!monthlyFilesInfo.length) {
-    sel.innerHTML = '<option value="">파일 없음 (monthly_files 폴더 확인)</option>';
+  // 확정(월마감)된 파일은 드롭다운에서 제외
+  const activeFiles = monthlyFilesInfo.filter(f => !f.confirmed);
+  if (!activeFiles.length) {
+    sel.innerHTML = '<option value="">진행 중인 파일 없음</option>';
+    onFileSelectChange();
     return;
   }
-  sel.innerHTML = monthlyFilesInfo.map(f =>
-    `<option value="${f.name}">${f.confirmed ? '🔒 ' : ''}${f.name}${f.confirmed ? ' [확정]' : ''}</option>`
+  sel.innerHTML = activeFiles.map(f =>
+    `<option value="${f.name}">${f.name}</option>`
   ).join('');
 
   // 데이터에서 감지된 월에 맞는 파일 자동 선택
@@ -664,7 +699,7 @@ async function setupMonthlySection() {
     const month = week.match(/^(\d+)월/)?.[1];
     if (month) {
       const padded = month.padStart(2, '0');
-      const match = monthlyFilesInfo.find(f => f.name.includes(`${padded}월`));
+      const match = activeFiles.find(f => f.name.includes(`${padded}월`));
       if (match) sel.value = match.name;
     }
   }
@@ -756,7 +791,8 @@ function onWeekSelectChange() {
 }
 
 // ─── 주차 확정 버튼 ──────────────────────────────────
-document.getElementById('btnConfirmWeek').addEventListener('click', async () => {
+const _btnConfirmWeek = document.getElementById('btnConfirmWeek');
+if (_btnConfirmWeek) _btnConfirmWeek.addEventListener('click', async () => {
   const filename = document.getElementById('monthlyFileSelect').value;
   const weekLabel = document.getElementById('weekSelect').value;
   if (!filename || !weekLabel) return;
@@ -790,7 +826,8 @@ document.getElementById('btnConfirmWeek').addEventListener('click', async () => 
 });
 
 // ─── 확정 취소 버튼 ─────────────────────────────────
-document.getElementById('btnUnconfirmWeek').addEventListener('click', async () => {
+const _btnUnconfirmWeek = document.getElementById('btnUnconfirmWeek');
+if (_btnUnconfirmWeek) _btnUnconfirmWeek.addEventListener('click', async () => {
   const filename = document.getElementById('monthlyFileSelect').value;
   const weekLabel = document.getElementById('weekSelect').value;
   if (!filename || !weekLabel) return;
@@ -819,7 +856,8 @@ document.getElementById('btnUnconfirmWeek').addEventListener('click', async () =
 });
 
 // ─── 주차 데이터 삭제 버튼 ───────────────────────────
-document.getElementById('btnDeleteWeek').addEventListener('click', async () => {
+const _btnDeleteWeek = document.getElementById('btnDeleteWeek');
+if (_btnDeleteWeek) _btnDeleteWeek.addEventListener('click', async () => {
   const filename = document.getElementById('monthlyFileSelect').value;
   const weekLabel = document.getElementById('weekSelect').value;
   if (!filename || !weekLabel) return;
@@ -850,10 +888,12 @@ document.getElementById('btnDeleteWeek').addEventListener('click', async () => {
 });
 
 // 초기 설명
-document.getElementById('modeDesc').textContent = MODE_DESC['daily'];
+const _modeDesc = document.getElementById('modeDesc');
+if (_modeDesc) _modeDesc.textContent = MODE_DESC['daily'];
 
 // ─── 월간 파일 삽입 ──────────────────────────────────
-document.getElementById('btnInsert').addEventListener('click', async () => {
+const _btnInsert = document.getElementById('btnInsert');
+if (_btnInsert) _btnInsert.addEventListener('click', async () => {
   if (!resultFilename) return showToast('먼저 처리를 실행해주세요.', 'error');
   const monthlyFilename = document.getElementById('monthlyFileSelect').value;
   if (!monthlyFilename) return showToast('대상 파일을 선택해주세요.', 'error');
@@ -948,8 +988,9 @@ function renderInsertReport(report) {
   }).join('');
 }
 
-document.getElementById('btnDownloadMonthly').addEventListener('click', () => {
-  const fn = document.getElementById('btnDownloadMonthly').dataset.filename;
+const _btnDownloadMonthly = document.getElementById('btnDownloadMonthly');
+if (_btnDownloadMonthly) _btnDownloadMonthly.addEventListener('click', () => {
+  const fn = _btnDownloadMonthly.dataset.filename;
   if (!fn) return;
   window.location.href = '/api/download-monthly/' + encodeURIComponent(fn);
 });

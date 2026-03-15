@@ -618,6 +618,44 @@ def compute_web_stats(final_tabs):
 
         weeks = sorted(by_week.keys())
 
+        by_date = {}
+        if date_series is not None:
+            def _to_d_str(d):
+                if d is None:
+                    return None
+                try:
+                    return f"{d.month}/{d.day}"
+                except Exception:
+                    return None
+            date_strs = date_series.apply(_to_d_str).dropna()
+            by_date = {str(k): int(v) for k, v in date_strs.value_counts().sort_index().items()}
+
+        # 주차별 오류유형 건수
+        fault_by_week = {}
+        if "주차" in df.columns and fault_col in df.columns:
+            for wk_val, wk_group in df.groupby("주차"):
+                fault_cnt = {}
+                for ft, cnt in wk_group[fault_col].value_counts().items():
+                    ft_str = str(ft).strip()
+                    if ft_str and ft_str not in ('', 'nan', 'None', 'NaN'):
+                        fault_cnt[ft_str] = int(cnt)
+                if fault_cnt:
+                    fault_by_week[str(wk_val)] = fault_cnt
+
+        # 전체(주 대상월) 오류유형 건수
+        fault_types = {}
+        if fault_col in df.columns:
+            if primary_month and date_series is not None:
+                pm_num = int(primary_month.replace("월", ""))
+                mask = date_series.apply(lambda d: d is not None and d.month == pm_num)
+                ft_vals = df.loc[mask, fault_col]
+            else:
+                ft_vals = df[fault_col]
+            for ft, cnt in ft_vals.value_counts().items():
+                ft_str = str(ft).strip()
+                if ft_str and ft_str not in ('', 'nan', 'None', 'NaN'):
+                    fault_types[ft_str] = int(cnt)
+
         stats[tab_name] = {
             "total": len(df),
             "total_primary": total_primary,
@@ -625,7 +663,54 @@ def compute_web_stats(final_tabs):
             "top3": top3,
             "by_week": by_week,
             "by_month": by_month,
+            "by_date": by_date,
             "weeks": weeks,
+            "fault_by_week": fault_by_week,
+            "fault_types": fault_types,
         }
 
     return stats
+
+
+def get_date_counts_from_monthly(monthly_filename):
+    """월간 파일에서 탭별 날짜별 건수 반환. {tab_name: {"M/D": count}}"""
+    file_path = get_monthly_file_path(monthly_filename)
+    if not os.path.exists(file_path):
+        return {}
+    result = {}
+    try:
+        wb = load_workbook(file_path, read_only=True, data_only=True)
+        for tab_name, sheet_name in TAB_TO_RAWSHEET.items():
+            if sheet_name not in wb.sheetnames:
+                continue
+            ws = wb[sheet_name]
+            headers, data = _read_sheet(ws)
+            if not headers:
+                continue
+            date_col_idx = None
+            for cname in ['장애접수일', '장애접수일시', '날짜']:
+                if cname in headers:
+                    date_col_idx = headers.index(cname)
+                    break
+            if date_col_idx is None:
+                continue
+            date_counts = {}
+            for row in data:
+                val = row[date_col_idx] if date_col_idx < len(row) else None
+                if val is None:
+                    continue
+                try:
+                    if isinstance(val, (date_type, datetime)):
+                        d = val.date() if hasattr(val, 'date') else val
+                    else:
+                        from datetime import datetime as _dt
+                        d = _dt.fromisoformat(str(val)[:10]).date()
+                    d_str = f"{d.month}/{d.day}"
+                    date_counts[d_str] = date_counts.get(d_str, 0) + 1
+                except Exception:
+                    continue
+            result[tab_name] = date_counts
+        wb.close()
+    except Exception as e:
+        print(f"[daily stats] {monthly_filename}: {e}")
+    return result

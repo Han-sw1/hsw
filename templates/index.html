@@ -29,31 +29,46 @@
     .week-confirm-badge.pending { background: var(--gray-light); color: var(--gray); }
   </style>
   <style>
-    .upload-compare-grid { display:grid; grid-template-columns:1fr 1fr; gap:0; }
-    @media(max-width:700px){ .upload-compare-grid { grid-template-columns:1fr; } }
-    .upload-compare-col { border-right:1px solid var(--border); }
-    .upload-compare-col:last-child { border-right:none; }
-    .upload-compare-title { font-size:12px; font-weight:700; color:var(--gray-dark);
-      padding:10px 20px; background:var(--gray-light); border-bottom:1px solid var(--border); }
     .ref-upload-row { display:flex; align-items:center; gap:10px; margin-top:6px; }
     .ref-status { font-size:12px; color:var(--gray-dark); flex:1;
       background:var(--gray-light); border-radius:5px; padding:6px 10px; }
     .ref-status.ok { color:var(--green); background:#EBF7EE; }
     .ref-status.missing { color:var(--primary); background:#FCEEF5; }
-  </style>
-  <style>
-    .comment-list { list-style:none; padding:0; margin:0; }
-    .comment-item { display:flex; align-items:flex-start; gap:10px; padding:11px 20px; border-bottom:1px solid var(--border); font-size:12px; line-height:1.6; }
-    .comment-item:last-child { border-bottom:none; }
-    .c-tag { font-size:10px; font-weight:700; padding:2px 8px; border-radius:4px; white-space:nowrap; flex-shrink:0; margin-top:2px; }
-    .c-tag.summary_bad,.c-tag.bad  { background:#FCEEF5; color:var(--primary); }
-    .c-tag.summary_good,.c-tag.good{ background:#EBF7EE; color:var(--green); }
-    .c-tag.summary_same,.c-tag.info{ background:#EBF3FB; color:var(--blue); }
-    .c-tag.new_bad,.c-tag.new_good,.c-tag.new_same,.c-tag.new { background:#FFF3CD; color:#7A4800; }
-    .c-tag.alert { background:#FFE4E4; color:var(--primary); }
-    .comment-text { flex:1; color:var(--gray-dark); }
-    .comment-item.divider-row { background:var(--gray-light); justify-content:center; padding:7px; }
-    .comment-item.divider-row .comment-text { text-align:center; color:var(--gray); font-size:11px; }
+    /* ─── 비교 테이블 ─── */
+    .cmp-tab-btns { display:flex; gap:0; padding:0 20px; border-bottom:1px solid var(--border); }
+    .cmp-tab-btn { padding:11px 20px; font-size:13px; font-weight:600; cursor:pointer;
+      border:none; background:none; color:var(--gray); border-bottom:2px solid transparent;
+      margin-bottom:-1px; transition:color .15s,border-color .15s; }
+    .cmp-tab-btn.active { color:var(--blue); border-bottom-color:var(--blue); }
+    .cmp-tab-btn:hover:not(.active) { color:var(--gray-dark); }
+    .cmp-tab-btn .cmp-period { font-size:11px; font-weight:400; opacity:.65; margin-left:6px; }
+    .cmp-panel { display:none; }
+    .cmp-panel.active { display:block; }
+    .cmp-table { width:100%; border-collapse:collapse; font-size:14px; }
+    .cmp-table th { padding:10px 20px; font-size:11px; font-weight:700; letter-spacing:.04em;
+      color:var(--gray); background:var(--gray-light); text-align:right;
+      border-bottom:2px solid var(--border); white-space:nowrap; }
+    .cmp-table th:first-child { text-align:left; min-width:200px; }
+    .cmp-table td { padding:14px 20px; border-bottom:1px solid var(--border);
+      text-align:right; vertical-align:top; font-size:14px; }
+    .cmp-table td:first-child { text-align:left; }
+    .cmp-table tr:last-child td { border-bottom:none; }
+    .cmp-table .cmp-total td { font-weight:800; font-size:16px; background:var(--gray-light); }
+    .cmp-num { font-variant-numeric:tabular-nums; }
+    .cmp-diff-up   { color:var(--primary); font-weight:700; }
+    .cmp-diff-down { color:var(--green);   font-weight:700; }
+    .cmp-diff-same { color:var(--gray); font-weight:400; }
+    .cmp-tab-label { display:inline-block; padding:3px 10px; border-radius:5px;
+      font-size:12px; font-weight:700; }
+    .cmp-tab-label.seoul   { background:#EBF3FB; color:var(--blue); }
+    .cmp-tab-label.airport { background:#FFF3CD; color:#7A4800; }
+    .cmp-tab-label.regional{ background:#EBF7EE; color:var(--green); }
+    .cmp-tab-label.total   { background:var(--gray-light); color:var(--gray-dark); font-size:13px; }
+    /* 오류유형 칩 */
+    .fault-chips { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
+    .fault-chip { font-size:11px; padding:2px 9px; border-radius:20px; white-space:nowrap; line-height:1.6; }
+    .fault-chip.up   { background:#FCEEF5; color:var(--primary); }
+    .fault-chip.down { background:#EBF7EE; color:var(--green); }
   </style>
 </head>
 <body>
@@ -266,22 +281,14 @@
       </div>
     </section>
 
-    <!-- 신규 업로드 비교 -->
+    <!-- 업로드 데이터 비교 -->
     <section class="card" id="uploadCompareCard" style="display:none">
       <div class="card-header">
-        <span class="card-icon">&#128202;</span>
-        <h2>신규 업로드 데이터 비교</h2>
+        <span class="card-icon">&#9889;</span>
+        <h2>업로드 데이터 비교</h2>
       </div>
-      <div class="upload-compare-grid">
-        <div class="upload-compare-col">
-          <div class="upload-compare-title">&#128197; 직전 확정 월 대비</div>
-          <ul class="comment-list" id="uploadCommentList"></ul>
-        </div>
-        <div class="upload-compare-col">
-          <div class="upload-compare-title">&#128336; 직전 주차 대비</div>
-          <ul class="comment-list" id="weekCommentList"></ul>
-        </div>
-      </div>
+      <div id="cmpTabBtns" class="cmp-tab-btns"></div>
+      <div id="cmpPanels"></div>
     </section>
 
     <!-- 월간 파일 업데이트 (관리자 전용) -->

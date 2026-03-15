@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>주차 장애현황 - ATEC</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css?v=20260313">
+  <style>
+    .chart-box { background:var(--white); border-radius:var(--radius); box-shadow:var(--shadow); padding:22px; min-width:0; overflow:hidden; margin-bottom:18px; }
+    .chart-title { font-size:15px; font-weight:700; color:var(--gray-dark); margin-bottom:16px; }
+    .month-sel { padding:8px 14px; border:1.5px solid var(--border); border-radius:6px; font-size:13px; font-family:inherit; background:var(--white); cursor:pointer; }
+    .month-sel:focus { outline:none; border-color:var(--primary); }
+    .loading-bar { text-align:center; padding:60px; color:var(--gray); font-size:14px; }
+    .stats-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .stats-table th { background:var(--brand-gray); color:#fff; padding:11px 14px; font-weight:700; white-space:nowrap; text-align:center; }
+    .stats-table td { padding:10px 14px; border-bottom:1px solid var(--border); text-align:center; }
+    .stats-table td:first-child { text-align:left; }
+    .stats-table tr:hover td { background:var(--gray-light); }
+    .tab-label { display:inline-block; padding:3px 10px; border-radius:5px; font-size:12px; font-weight:700; }
+    .tab-label.seoul   { background:#FDF0F5; color:var(--primary); }
+    .tab-label.airport { background:#EBF3FB; color:var(--blue); }
+    .tab-label.regional{ background:#EBF7EE; color:var(--green); }
+    .tab-label-analysis { display:inline-block; padding:4px 12px; border-radius:5px; font-size:13px; font-weight:700; white-space:nowrap; }
+    .tab-label-analysis.seoul   { background:#FDF0F5; color:var(--primary); border:1px solid #F0C0D4; }
+    .tab-label-analysis.airport { background:#EBF3FB; color:var(--blue);    border:1px solid #AACCE8; }
+    .tab-label-analysis.regional{ background:#EBF7EE; color:var(--green);   border:1px solid #A8D8B4; }
+    .week-badge { display:inline-block; padding:2px 10px; border-radius:5px; font-size:12px; font-weight:600; background:var(--gray-light); color:var(--gray-dark); }
+    .count-cell { font-size:14px; font-weight:700; }
+    .period-cell { font-size:13px; }
+    .top3-cell { font-size:12px; color:var(--gray-dark); text-align:left !important; }
+    .rate-badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:800; margin-left:4px; }
+    .rate-badge.bad { background:#FFF0F4; color:var(--primary); border:1px solid #F5C0CF; }
+    .rate-badge.ok  { background:#EBF7EE; color:var(--green);   border:1px solid #A8D8B4; }
+    .compare-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .compare-table th { background:var(--brand-gray); color:#fff; padding:11px 16px; font-weight:700; white-space:nowrap; text-align:center; }
+    .compare-table td { padding:10px 16px; border-bottom:1px solid var(--border); text-align:center; vertical-align:middle; }
+    .compare-table tr:last-child td { border-bottom:none; font-weight:800; background:var(--gray-light); }
+    .compare-table tr:hover:not(:last-child) td { background:#FAFBFF; }
+    .cmp-count { font-weight:800; font-size:15px; }
+    .cmp-rate  { font-size:11px; color:var(--gray); display:block; margin-top:2px; }
+    .cmp-rate.bad { color:var(--primary); }
+    .cmp-rate.ok  { color:var(--green); }
+    .cmp-diff  { font-weight:800; font-size:14px; }
+    .cmp-bar   { display:inline-block; height:6px; border-radius:3px; margin-left:6px; vertical-align:middle; opacity:0.7; }
+    .diff-up   { color:var(--primary); font-weight:700; }
+    .diff-down { color:var(--green); font-weight:700; }
+    .diff-same { color:var(--gray); }
+    .fault-change-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:4px; }
+    @media(max-width:700px){.fault-change-grid{grid-template-columns:1fr;}}
+    .fault-change-box { border-radius:8px; padding:14px 18px; }
+    .fault-change-box.up   { background:#FFF0F4; border:1px solid #F5C0CF; }
+    .fault-change-box.down { background:#EBF7EE; border:1px solid #A8D8B4; }
+    .fault-change-title { font-size:13px; font-weight:800; margin-bottom:10px; }
+    .fault-change-title.up   { color:var(--primary); }
+    .fault-change-title.down { color:var(--green); }
+    .fault-item { display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid rgba(0,0,0,0.06); font-size:13px; }
+    .fault-item:last-child { border-bottom:none; }
+    .fault-name  { color:var(--gray-dark); font-weight:500; flex:1; }
+    .fault-delta { font-weight:800; white-space:nowrap; margin-left:10px; }
+    .fault-delta.up   { color:var(--primary); }
+    .fault-delta.down { color:var(--green); }
+    .fault-delta.new  { color:#7A4800; background:#FFF3CD; padding:1px 7px; border-radius:4px; font-size:11px; }
+    .fault-delta.gone { color:var(--gray); background:var(--gray-light); padding:1px 7px; border-radius:4px; font-size:11px; }
+    .empty-msg { text-align:center; color:var(--gray); font-size:13px; padding:30px; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="sidebar-toggle-btn" id="sidebarToggle" title="메뉴 열고 닫기">
+          <svg viewBox="0 0 20 20"><line x1="3" y1="5" x2="17" y2="5"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="3" y1="15" x2="17" y2="15"/></svg>
+        </button>
+        <a class="logo-area" href="/">
+          <img src="/static/logo.png" alt="ATEC 에이텍모빌리티" class="logo-img">
+        </a>
+      </div>
+      <div class="header-title">주차 장애현황</div>
+      <div class="header-right">
+        <button class="theme-toggle" id="themeToggle" title="다크모드 전환">☀️</button>
+        <div class="header-divider"></div>
+        <div class="header-user">
+          <span class="header-user-name">{{ current_user.name }}</span>
+          {% if current_user.is_admin %}<span class="header-user-badge">관리자</span>{% endif %}
+        </div>
+      </div>
+    </div>
+  </header>
+  <div class="page-body">
+  {% include '_sidebar.html' %}
+  <div class="page-content">
+  <main class="main">
+    <div id="loadingBar" class="loading-bar">데이터를 불러오는 중입니다...</div>
+    <div id="dashContent" style="display:none">
+
+      <!-- 확정된 주차 현황 -->
+      <div class="chart-box" id="confirmedWeeksSection">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+          <div class="chart-title" style="margin:0">&#128274; 확정된 주차 현황</div>
+          <select class="month-sel" id="confirmedWeekSel" onchange="renderConfirmedWeekDetail()"></select>
+        </div>
+        <div class="stats-table-wrap">
+          <table class="stats-table" id="confirmedWeekTable">
+            <thead>
+              <tr>
+                <th>지역 / 단말</th>
+                <th>건수 / 장애율</th>
+                <th>주차</th>
+                <th>TOP3 주요 장애유형</th>
+              </tr>
+            </thead>
+            <tbody id="confirmedWeekBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 주차 비교 -->
+      <div class="chart-box" id="weekCompareSection">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+          <div class="chart-title" style="margin:0">&#128200; 주차 비교</div>
+          <select class="month-sel" id="weekSelA" onchange="renderWeekCompare()"></select>
+          <span style="font-size:13px;color:var(--gray)">vs</span>
+          <select class="month-sel" id="weekSelB" onchange="renderWeekCompare()"></select>
+        </div>
+        <div style="overflow-x:auto;margin-bottom:18px">
+          <table class="compare-table" id="weekCompareGrid"></table>
+        </div>
+        <div id="faultChangeWrap"></div>
+      </div>
+
+    </div>
+  </main>
+  </div>
+  </div>
+  <script src="/static/js/analysis_weekly.js?v=20260315"></script>
+  <script src="/static/js/theme.js"></script>
+</body>
+</html>

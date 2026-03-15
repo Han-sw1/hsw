@@ -33,8 +33,7 @@ from datetime import datetime
 from processor import process_all_files, tabs_to_excel_bytes, build_preview
 from excel_writer import list_monthly_files, insert_into_monthly, compute_web_stats, get_monthly_file_path, delete_weekly, cleanup_monthly_duplicates
 from analytics import (
-    get_all_historical_stats, generate_comments, generate_upload_comparison,
-    generate_week_comparison,
+    get_all_historical_stats, generate_comments, generate_comparison,
     read_운영수량_only, TAB_ORDER as ANALYTICS_TAB_ORDER, _parse_ym,
 )
 import database as _db
@@ -142,7 +141,7 @@ def login_page():
         password = request.form.get("password", "")
         row = _db.get_user_by_username(username)
         if row and check_password_hash(row["password_hash"], password):
-            login_user(User(row), remember=True)
+            login_user(User(row), remember=False)
             return redirect(request.args.get("next") or url_for("index"))
         error = "아이디 또는 비밀번호가 올바르지 않습니다."
     return render_template("login.html", error=error, signup_msg=signup_msg)
@@ -250,7 +249,7 @@ def update_config():
 
 
 def _is_confirmed(filename):
-    """25년6월~26년2월 파일은 확정(잠금) 상태."""
+    """확정(잠금) 상태 여부: 하드코딩 날짜 범위 또는 DB에 월마감 마커가 있으면 True."""
     import re
     m = re.search(r'(\d{4})년\s*(\d{2})월', filename)
     if not m:
@@ -262,7 +261,9 @@ def _is_confirmed(filename):
         return True
     if year == 2026 and month <= 2:
         return True
-    return False
+    # 그 이후 월은 DB에서 월마감 마커 확인
+    cw = load_confirmed_weeks()
+    return "__월마감__" in cw.get(filename, [])
 
 
 @app.route("/api/monthly-files")
@@ -356,13 +357,11 @@ def process():
                 ts["운영수량"] = None
                 ts["fault_rate"] = None
 
-        # 신규 업로드 vs 직전 확정 월/주차 비교 코멘트
-        upload_comments = []
-        week_comments = []
+        # 스마트 비교 (전일/전주)
+        comparison = {"comparisons": []}
         try:
             hist = get_all_historical_stats()
-            upload_comments = generate_upload_comparison(stats, hist)
-            week_comments = generate_week_comparison(stats, hist)
+            comparison = generate_comparison(stats, hist)
         except Exception:
             pass
 
@@ -373,8 +372,7 @@ def process():
             "previews": previews,
             "stats": stats,
             "weeks": sorted(all_weeks),
-            "upload_comments": upload_comments,
-            "week_comments": week_comments,
+            "comparison": comparison,
             "file_types": {
                 os.path.basename(p): m.get("type", "unknown")
                 for p, m in zip(tmp_paths, meta.values())
@@ -436,6 +434,10 @@ def insert_monthly():
 
         if "error" in report:
             return jsonify({"error": report["error"]}), 400
+
+        # 월 마감 시 DB에 확정 마커 저장 → _is_confirmed() 에서 확인
+        if mode == "monthly":
+            _db.add_confirmed_week(monthly_filename, "__월마감__")
 
         return jsonify({"ok": True, "report": report, "filename": monthly_filename})
 
@@ -668,7 +670,25 @@ def confirmed_weeks_stats():
 @app.route("/analysis")
 @login_required
 def analysis_page():
-    return render_template("analysis.html", active_page="analysis")
+    return redirect(url_for("analysis_monthly_page"))
+
+
+@app.route("/analysis/monthly")
+@login_required
+def analysis_monthly_page():
+    return render_template("analysis_monthly.html", active_page="analysis_monthly")
+
+
+@app.route("/analysis/weekly")
+@login_required
+def analysis_weekly_page():
+    return render_template("analysis_weekly.html", active_page="analysis_weekly")
+
+
+@app.route("/analysis/fault-types")
+@login_required
+def analysis_faulttype_page():
+    return render_template("analysis_faulttype.html", active_page="analysis_faulttype")
 
 
 @app.route("/api/analysis-data")
