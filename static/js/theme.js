@@ -25,6 +25,21 @@
   }
 })();
 
+// 마지막 업데이트 배지
+(function() {
+  var badge = document.getElementById('lastUpdateBadge');
+  if (!badge) return;
+  fetch('/api/last-update').then(function(r) {
+    if (!r.ok) return;
+    return r.json();
+  }).then(function(data) {
+    if (!data || !data.timestamp) return;
+    var detail = data.detail ? ' <strong>' + data.detail + '</strong>' : '';
+    badge.innerHTML = data.action + detail + '<br>' + data.timestamp;
+    badge.style.display = 'block';
+  }).catch(function() {});
+})();
+
 // 사이드바 열고 닫기
 (function() {
   const STORAGE_KEY = 'atmo_sidebar_v2';

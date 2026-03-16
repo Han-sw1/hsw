@@ -221,6 +221,14 @@ function renderB620Table() {
 
 // ── 지역버스 ─────────────────────────────────────────
 const RG_ORDER = ['B650','B400','B600','B500','B810','B520D'];
+const RG_LABEL = {
+  'B650':  '대전 B650',
+  'B400':  '제주 B400',
+  'B600':  '김해 B600',
+  'B500':  '세종 B500',
+  'B810':  '포항 B800',
+  'B520D': '안동 B520D',
+};
 
 function initRegional() {
   const data = rdData.regional;
@@ -231,7 +239,7 @@ function initRegional() {
   state.rg.tab = tabs[0];
 
   document.getElementById('rgSummary').innerHTML = summaryHtml(
-    Object.fromEntries(tabs.map(t => [t, data.tabs[t]]))
+    Object.fromEntries(tabs.map(t => [RG_LABEL[t] || t, data.tabs[t]]))
   );
 
   renderRgTabGroup();
@@ -244,7 +252,7 @@ function renderRgTabGroup() {
   const tabs = RG_ORDER.filter(t => data.tabs[t]);
   document.getElementById('rgTabGroup').innerHTML =
     tabs.map(t =>
-      `<button class="tab-btn rg-tab ${t===state.rg.tab?'active':''}" onclick="rgSetTab('${t}')">${t}</button>`
+      `<button class="tab-btn rg-tab ${t===state.rg.tab?'active':''}" onclick="rgSetTab('${t}')">${RG_LABEL[t] || t}</button>`
     ).join('');
 }
 

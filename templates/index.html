@@ -84,6 +84,7 @@
       </div>
       <div class="header-title">단말기 장애 자동화 시스템</div>
       <div class="header-right">
+        <div id="lastUpdateBadge" class="last-update-badge" style="display:none;" title="마지막 업데이트"></div>
         <button class="theme-toggle" id="themeToggle" title="다크모드 전환">☀️</button>
         <div class="header-divider"></div>
         <div class="header-user">
@@ -162,7 +163,7 @@
         <div class="drop-zone" id="dropZone">
           <div class="drop-icon">&#128203;</div>
           <p class="drop-text">파일을 여기에 끌어다 놓거나 클릭하여 선택하세요<br>
-          <span class="drop-hint">서울원본 · B710원본 · 공항원본 · 지역버스 — 한 번에 모두 업로드 가능</span></p>
+          <span class="drop-hint">시내버스 · 마을버스 · 공항버스 · 지역버스 — 한 번에 모두 업로드 가능</span></p>
           <input type="file" id="fileInput" accept=".xls,.xlsx" multiple hidden>
           <button class="btn btn-outline" onclick="document.getElementById('fileInput').click()">파일 선택</button>
         </div>
@@ -199,8 +200,7 @@
         <div class="guide-num">3</div>
         <p class="guide-text">
           <strong>&#9889; 장애 데이터 처리</strong> 버튼을 눌러<br>
-          자동 분류·필터링 후<br>
-          <strong>월간 파일에 삽입</strong>하세요.
+          장애 현황을 확인하세요.
         </p>
       </div>
     </section>

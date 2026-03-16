@@ -304,6 +304,16 @@ def process():
                 f.save(tmp.name)
                 tmp_paths.append(tmp.name)
 
+        # 원본 raw DataFrame 저장 (전체접수 집계에 사용)
+        import pandas as _pd_raw
+        raw_dfs = []
+        for p in tmp_paths:
+            try:
+                raw_dfs.append(_pd_raw.read_excel(p, dtype=str))
+            except Exception:
+                pass
+        raw_df_combined = _pd_raw.concat(raw_dfs, ignore_index=True) if raw_dfs else _pd_raw.DataFrame()
+
         final_tabs, summary, meta = process_all_files(tmp_paths, criteria_path, cits_path)
 
         if not final_tabs:
@@ -323,6 +333,13 @@ def process():
         pkl_path = result_path + ".pkl"
         with open(pkl_path, "wb") as f:
             pickle.dump(final_tabs, f)
+
+        # 원본 raw DataFrame 저장 (주차 확정 시 전체접수 계산에 사용)
+        if not raw_df_combined.empty:
+            raw_pkl_path = result_path + ".raw.pkl"
+            with open(raw_pkl_path, "wb") as f:
+                pickle.dump(raw_df_combined, f)
+
 
         previews = build_preview(final_tabs)
         stats = compute_web_stats(final_tabs)
@@ -439,6 +456,34 @@ def insert_monthly():
         if mode == "monthly":
             _db.add_confirmed_week(monthly_filename, "__월마감__")
 
+        # monthly_tab_stats DB 갱신 (월별 장애현황 동기화)
+        try:
+            from analytics import read_monthly_stats, _parse_ym
+            _stats = read_monthly_stats(monthly_filename)
+            if _stats:
+                _year, _month = _parse_ym(monthly_filename)
+                if _year:
+                    _db.upsert_file_stats(monthly_filename, _year, _month, _stats)
+        except Exception as _e:
+            print(f"[insert_monthly] stats DB 갱신 오류: {_e}")
+
+        # 주차 확정 시 원본 raw 데이터로 전체접수 DB 업데이트
+        if mode == "weekly" and week_label:
+            try:
+                raw_pkl_path = os.path.join(_RESULTS_DIR, result_key + ".raw.pkl")
+                if os.path.exists(raw_pkl_path):
+                    with open(raw_pkl_path, "rb") as _f:
+                        _raw_df = pickle.load(_f)
+                    from weekly_summary import upsert_전체접수_from_raw
+                    upsert_전체접수_from_raw(_raw_df)
+            except Exception as _e:
+                print(f"[weekly_summary] 전체접수 DB 갱신 오류: {_e}")
+
+        # 마지막 업데이트 기록
+        action_label = {"daily": "일별 추가", "weekly": "주차 확정", "monthly": "월 마감"}.get(mode, mode)
+        detail = week_label if mode == "weekly" else monthly_filename
+        _save_last_update(action_label, detail)
+
         return jsonify({"ok": True, "report": report, "filename": monthly_filename})
 
     except Exception as e:
@@ -491,6 +536,33 @@ def get_confirmed_weeks():
     return jsonify(load_confirmed_weeks())
 
 
+# ─── 마지막 업데이트 기록 ─────────────────────────────────
+_LAST_UPDATE_PATH = os.path.join(os.path.dirname(__file__), "last_update.json")
+
+def _save_last_update(action, detail=""):
+    try:
+        payload = {
+            "action": action,
+            "detail": detail,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        }
+        with open(_LAST_UPDATE_PATH, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+@app.route("/api/last-update")
+@login_required
+def get_last_update():
+    try:
+        if os.path.exists(_LAST_UPDATE_PATH):
+            with open(_LAST_UPDATE_PATH, "r", encoding="utf-8") as f:
+                return jsonify(json.load(f))
+    except Exception:
+        pass
+    return jsonify({})
+
+
 @app.route("/api/confirm-week", methods=["POST"])
 @login_required
 def confirm_week():
@@ -502,6 +574,7 @@ def confirm_week():
     if not filename or not week:
         return jsonify({"error": "파라미터 누락"}), 400
     _db.add_confirmed_week(filename, week)
+    _save_last_update("주차 확정", week)
     return jsonify({"ok": True})
 
 
@@ -516,6 +589,13 @@ def unconfirm_week():
     if not filename or not week:
         return jsonify({"error": "파라미터 누락"}), 400
     _db.remove_confirmed_week(filename, week)
+    # 주차별 장애 요약 테이블에서 해당 주차 삭제 (슬라이딩 윈도우)
+    try:
+        from weekly_summary import DEVICE_ORDER as _ws_devices
+        for _dev in _ws_devices:
+            _db.clear_weekly_전체_by_device_week(week, _dev)
+    except Exception as _e:
+        print(f"[weekly_summary] 전체접수 삭제 오류: {_e}")
     return jsonify({"ok": True})
 
 
@@ -665,6 +745,22 @@ def confirmed_weeks_stats():
     except Exception as e:
         import traceback
         return jsonify({"error": str(e), "detail": traceback.format_exc()}), 500
+
+
+@app.route("/api/weekly-summary-table")
+@login_required
+def weekly_summary_table():
+    """주차별 장애 요약 테이블 (B800/B620/B700/B710)"""
+    try:
+        from weekly_summary import compute_weekly_summary
+        data = compute_weekly_summary()
+        from flask import make_response
+        resp = make_response(jsonify(data))
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+    except Exception as e:
+        import traceback
+        return jsonify({"ok": False, "error": str(e), "detail": traceback.format_exc()}), 500
 
 
 @app.route("/analysis")

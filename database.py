@@ -47,6 +47,15 @@ def init_db():
                 PRIMARY KEY (filename, tab_name)
             );
 
+            CREATE TABLE IF NOT EXISTS weekly_전체_stats (
+                week_label  TEXT NOT NULL,
+                device      TEXT NOT NULL,
+                total       INTEGER DEFAULT 0,
+                top_faults  TEXT DEFAULT '[]',
+                updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (week_label, device)
+            );
+
             CREATE TABLE IF NOT EXISTS users (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
                 username      TEXT UNIQUE NOT NULL,
@@ -150,6 +159,52 @@ def get_all_historical_stats():
             "by_month_faults": json.loads(row["by_month_faults"] or "{}"),
         }
     return all_stats
+
+
+# ── weekly_전체_stats ─────────────────────────────────────────────────────────
+
+def upsert_weekly_전체(week_label, device, total, top_faults):
+    """주차별 전체접수 통계 저장/갱신."""
+    with _lock:
+        with _connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO weekly_전체_stats (week_label, device, total, top_faults)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(week_label, device) DO UPDATE SET
+                    total=excluded.total,
+                    top_faults=excluded.top_faults,
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                (week_label, device, total, json.dumps(top_faults, ensure_ascii=False)),
+            )
+            conn.commit()
+
+
+def get_weekly_전체_all():
+    """전체 주차별 전체접수 통계 반환. {device: {week_label: {total, top_faults}}}"""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT week_label, device, total, top_faults FROM weekly_전체_stats"
+        ).fetchall()
+    result = {}
+    for row in rows:
+        result.setdefault(row["device"], {})[row["week_label"]] = {
+            "total": row["total"],
+            "top_faults": json.loads(row["top_faults"] or "[]"),
+        }
+    return result
+
+
+def clear_weekly_전체_by_device_week(week_label, device):
+    """특정 주차/기종 전체접수 통계 삭제."""
+    with _lock:
+        with _connect() as conn:
+            conn.execute(
+                "DELETE FROM weekly_전체_stats WHERE week_label=? AND device=?",
+                (week_label, device),
+            )
+            conn.commit()
 
 
 def has_stats_for_file(filename):

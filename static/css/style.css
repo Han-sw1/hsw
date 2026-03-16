@@ -657,6 +657,22 @@ body.sidebar-collapsed .page-content {
 }
 .theme-toggle:hover { background: var(--border); }
 
+.last-update-badge {
+  font-size: 11px;
+  color: var(--text-secondary, #888);
+  background: var(--gray-light);
+  border-radius: 10px;
+  padding: 3px 10px;
+  white-space: nowrap;
+  line-height: 1.4;
+  text-align: center;
+  flex-shrink: 0;
+}
+.last-update-badge strong {
+  color: var(--primary, #2563eb);
+  font-weight: 600;
+}
+
 /* ─── DARK MODE ─── */
 body.dark {
   --gray-dark: #e2e3ea;

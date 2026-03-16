@@ -1,3 +1,115 @@
+// ─── 주차별 장애 요약 테이블 ─────────────────────────────────
+function loadWeeklySummary() {
+  fetch('/api/weekly-summary-table', { cache: 'no-store' })
+    .then(r => r.json())
+    .then(data => renderWeeklySummary(data))
+    .catch(e => {
+      const el = document.getElementById('weeklySummaryContent');
+      if (el) el.innerHTML = `<div class="empty-msg" style="color:var(--primary)">로드 오류: ${e.message}</div>`;
+    });
+}
+
+function renderWeeklySummary(data) {
+  const el = document.getElementById('weeklySummaryContent');
+  if (!el) return;
+
+  if (!data.ok) {
+    el.innerHTML = `<div class="empty-msg">${data.error || '데이터 없음'}</div>`;
+    return;
+  }
+
+  const devices = data.devices || [];
+  const prevWeeks = data.prev_weeks || [];
+  const curWeek = data.current_week || '';
+  const rowData = data.data || {};
+
+  if (!devices.length) {
+    el.innerHTML = '<div class="empty-msg">집계된 기종 데이터가 없습니다.</div>';
+    return;
+  }
+
+  // 헤더 생성
+  let headerRow1 = `<th rowspan="2" style="min-width:70px">기종</th>`;
+  if (prevWeeks.length > 0) {
+    headerRow1 += `<th colspan="${prevWeeks.length}" style="background:#4a5568">전체접수 (직전 ${prevWeeks.length}주)</th>`;
+  }
+  headerRow1 += `<th colspan="3" class="cur-head">현재 주차 (${curWeek})</th>`;
+  headerRow1 += `<th rowspan="2" class="cur-head" style="min-width:80px">전주 대비 증감</th>`;
+  headerRow1 += `<th rowspan="2" class="cur-head" style="min-width:200px">주요장애<br><small style="font-weight:400;font-size:11px">(전체건수 / 동일차량 2회↑)</small></th>`;
+
+  let headerRow2 = '';
+  prevWeeks.forEach(w => {
+    headerRow2 += `<th>${w}</th>`;
+  });
+  headerRow2 += `<th class="cur-head">전체접수</th><th class="cur-head">장애접수</th><th class="cur-head">이상없음</th>`;
+
+  // 데이터 행 생성
+  const rows = devices.map(device => {
+    const d = rowData[device];
+    if (!d) return '';
+    const by_week = d.by_week || {};
+    const cur = d.current || {};
+    const isBb620 = device === 'B620';
+    const devClass = isBb620 ? 'b620' : '';
+
+    // 직전 주차 셀
+    let histCells = prevWeeks.map(w => {
+      const wd = by_week[w];
+      if (!wd || wd.total === 0) return `<td><span class="ws-no-data">-</span></td>`;
+      return `<td><span class="ws-hist">${wd.total}건</span><br><span class="ws-hist-sub">(${wd.fault}건)</span></td>`;
+    }).join('');
+
+    // 현재 주차 셀
+    const curTotal = cur.total || 0;
+    const curFault = cur.fault || 0;
+    const curNonfault = cur.nonfault || 0;
+    const prevDiff = cur.prev_diff !== undefined ? cur.prev_diff : null;
+
+    let diffHtml = '<span class="ws-diff-same">-</span>';
+    if (prevDiff !== null) {
+      if (prevDiff > 0)
+        diffHtml = `<span class="ws-diff-up">▲ ${prevDiff}건</span>`;
+      else if (prevDiff < 0)
+        diffHtml = `<span class="ws-diff-down">▽ ${Math.abs(prevDiff)}건</span>`;
+      else
+        diffHtml = `<span class="ws-diff-same">→ 동일</span>`;
+    }
+
+    // 주요장애
+    const topFaults = cur.top_faults || [];
+    let faultHtml = '<span class="ws-no-data">-</span>';
+    if (topFaults.length > 0) {
+      faultHtml = topFaults.slice(0, 3).map((f, i) =>
+        `<span class="ws-faults-item">${i + 1}. ${f.name}<span class="ft-num">(${f.total}건/${f.vehicles_2plus}건)</span></span>`
+      ).join('');
+    }
+
+    return `<tr>
+      <td><span class="ws-device ${devClass}">${device}</span></td>
+      ${histCells}
+      <td><span class="ws-cur-total">${curTotal}건</span></td>
+      <td><span class="ws-cur-fault">${curFault}건</span></td>
+      <td><span class="ws-cur-nonfault">${curNonfault}건</span></td>
+      <td>${diffHtml}</td>
+      <td class="ws-faults">${faultHtml}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="ws-wrap">
+      <table class="ws-table">
+        <thead>
+          <tr>${headerRow1}</tr>
+          <tr>${headerRow2}</tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div style="margin-top:10px;font-size:11px;color:var(--gray)">
+      * 전체접수: 타코/개폐센서이상 제외 &nbsp;|&nbsp; 장애접수: 재현 + 비장애 필터 적용 &nbsp;|&nbsp; 이상없음 = 전체 - 장애
+    </div>`;
+}
+
 const TAB_ORDER = [
   "서울 B800","서울 B700","서울 B710","공항 B620",
   "대전 B650","세종 B500","제주 B400","포항 B800",
@@ -12,6 +124,7 @@ window.addEventListener('DOMContentLoaded', () => loadWeekly());
 document.addEventListener('visibilitychange', () => { if (!document.hidden) loadWeekly(); });
 
 function loadWeekly() {
+  loadWeeklySummary();
   fetch('/api/confirmed-weeks-stats', { cache:'no-store' })
     .then(r => r.json())
     .then(data => {

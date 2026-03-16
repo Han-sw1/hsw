@@ -817,6 +817,8 @@ if (_btnConfirmWeek) _btnConfirmWeek.addEventListener('click', async () => {
       if (!confirmedWeeksCache[filename].includes(weekLabel)) confirmedWeeksCache[filename].push(weekLabel);
       updateWeekActionUI();
       showToast(`${weekLabel} 확정 완료`, 'success');
+      // 마지막 업데이트 배지 갱신
+      try { const lu = await fetch('/api/last-update'); if (lu.ok) renderLastUpdate(await lu.json()); } catch (_) {}
     } else {
       showToast(data.error || '오류', 'error');
     }
@@ -959,6 +961,12 @@ if (_btnInsert) _btnInsert.addEventListener('click', async () => {
       .filter(r => !r.skipped)
       .reduce((s, r) => s + (r.added || 0), 0);
     showToast(`삽입 완료! ${totalAdded}건 추가 — 다운로드 버튼을 눌러 파일을 받으세요.`, 'success');
+
+    // 마지막 업데이트 배지 갱신
+    try {
+      const lu = await fetch('/api/last-update');
+      if (lu.ok) renderLastUpdate(await lu.json());
+    } catch (_) {}
     document.getElementById('insertReport').scrollIntoView({ behavior: 'smooth' });
 
   } catch (e) {
@@ -1010,3 +1018,14 @@ function showToast(msg, type = '') {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
 }
+
+// ─── 마지막 업데이트 표시 ─────────────────────────────────
+function renderLastUpdate(data) {
+  const badge = document.getElementById('lastUpdateBadge');
+  if (!badge || !data || !data.timestamp) return;
+  const detail = data.detail ? ` <strong>${data.detail}</strong>` : '';
+  badge.innerHTML = `${data.action}${detail}<br>${data.timestamp}`;
+  badge.style.display = 'block';
+}
+
+// (마지막 업데이트 초기 로드는 theme.js에서 처리)
