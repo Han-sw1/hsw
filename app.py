@@ -88,6 +88,9 @@ def inject_super_admin():
 # DB 초기화 (백그라운드)
 def _startup_init():
     try:
+        print(f"[DB] DATA_DIR={os.environ.get('DATA_DIR', '미설정')}")
+        print(f"[DB] DB 경로={_db.DB_PATH}")
+        print(f"[DB] DB 존재={os.path.exists(_db.DB_PATH)}")
         _db.init_db()
         if _db.is_db_empty():
             _db.migrate_excel_stats()
@@ -958,6 +961,41 @@ def admin_set_admin():
         return jsonify({"error": f"'{username}' 아이디를 찾을 수 없습니다."}), 404
     _db.set_admin(username, is_admin)
     return jsonify({"ok": True, "username": username, "is_admin": is_admin})
+
+
+@app.route("/api/admin/db-info")
+@login_required
+def admin_db_info():
+    """볼륨/DB 상태 확인용 (슈퍼관리자)."""
+    if current_user.username != SUPER_ADMIN:
+        return jsonify({"error": "슈퍼관리자만 사용 가능"}), 403
+    data_dir = os.environ.get("DATA_DIR", "(미설정)")
+    db_path = _db.DB_PATH
+    db_exists = os.path.exists(db_path)
+    db_size = os.path.getsize(db_path) if db_exists else 0
+    volume_dir = os.environ.get("DATA_DIR", "")
+    volume_files = []
+    if volume_dir and os.path.exists(volume_dir):
+        try:
+            volume_files = os.listdir(volume_dir)
+        except Exception:
+            pass
+    user_count = 0
+    try:
+        import sqlite3 as _sq
+        conn = _sq.connect(db_path)
+        user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        conn.close()
+    except Exception:
+        pass
+    return jsonify({
+        "DATA_DIR": data_dir,
+        "db_path": db_path,
+        "db_exists": db_exists,
+        "db_size_kb": round(db_size / 1024, 1),
+        "volume_files": volume_files,
+        "user_count": user_count,
+    })
 
 
 @app.route("/api/admin/resync-weekly", methods=["POST"])
