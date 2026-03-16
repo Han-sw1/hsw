@@ -1002,6 +1002,35 @@ def admin_db_info():
     })
 
 
+@app.route("/api/admin/upload-raw-confirmed", methods=["POST"])
+@login_required
+def upload_raw_confirmed():
+    """raw_confirmed pkl 파일 업로드 (로컬→Railway 동기화용)."""
+    if current_user.username != SUPER_ADMIN:
+        return jsonify({"error": "슈퍼관리자만 사용 가능합니다."}), 403
+    files = request.files.getlist("files")
+    if not files:
+        return jsonify({"error": "파일 없음"}), 400
+    rc_dir = os.path.join(_BASE_DIR, "raw_confirmed")
+    os.makedirs(rc_dir, exist_ok=True)
+    saved = []
+    for f in files:
+        if not f.filename.endswith(".pkl"):
+            continue
+        save_path = os.path.join(rc_dir, f.filename)
+        f.save(save_path)
+        saved.append(f.filename)
+        # 즉시 DB 반영
+        try:
+            with open(save_path, "rb") as _f:
+                df = pickle.load(_f)
+            from weekly_summary import upsert_전체접수_from_raw
+            upsert_전체접수_from_raw(df)
+        except Exception as e:
+            print(f"[upload_raw_confirmed] {f.filename} 오류: {e}")
+    return jsonify({"ok": True, "saved": saved})
+
+
 @app.route("/api/admin/resync-weekly", methods=["POST"])
 @login_required
 def admin_resync_weekly():

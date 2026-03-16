@@ -297,6 +297,30 @@ function uploadRawdataFile(inputEl, type, statusEl) {
     });
   inputEl.value = '';
 }
+// raw_confirmed pkl 업로드
+document.getElementById('rawConfirmedInput').addEventListener('change', function() {
+  const files = this.files;
+  if (!files.length) return;
+  const status = document.getElementById('rawConfirmedStatus');
+  status.style.color = 'var(--gray)';
+  status.textContent = `${files.length}개 파일 업로드 중...`;
+  const fd = new FormData();
+  for (const f of files) fd.append('files', f);
+  fetch('/api/admin/upload-raw-confirmed', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        status.style.color = 'var(--green)';
+        status.textContent = `✓ 완료: ${d.saved.join(', ')}`;
+      } else {
+        status.style.color = 'var(--primary)';
+        status.textContent = '오류: ' + d.error;
+      }
+    })
+    .catch(() => { status.style.color='var(--primary)'; status.textContent='업로드 실패'; });
+  this.value = '';
+});
+
 document.getElementById('rdBSeriesInput').addEventListener('change', function() {
   uploadRawdataFile(this, 'b_series', document.getElementById('rdBSeriesStatus'));
 });

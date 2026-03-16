@@ -176,6 +176,15 @@
         </div>
         <div id="rdUploadStatus" style="font-size:12px;color:var(--gray);margin-top:10px;min-height:16px"></div>
       </div>
+      <div style="margin:16px 0 8px;padding:18px;border:1.5px solid var(--border);border-radius:10px;background:var(--gray-light)">
+        <div style="font-size:13px;font-weight:700;color:var(--gray-dark);margin-bottom:4px">주차 확정 데이터 업로드</div>
+        <div style="font-size:12px;color:var(--gray);margin-bottom:12px">로컬 <code>raw_confirmed/</code> 폴더의 .pkl 파일을 Railway에 업로드합니다.</div>
+        <label class="btn btn-outline btn-sm" style="cursor:pointer;margin:0">
+          &#128194; pkl 파일 선택 (복수 선택 가능)
+          <input type="file" id="rawConfirmedInput" accept=".pkl" multiple hidden>
+        </label>
+        <div id="rawConfirmedStatus" style="font-size:12px;color:var(--gray);margin-top:10px;min-height:16px"></div>
+      </div>
       <div style="margin:16px 0 8px;padding:18px;border:1.5px solid var(--border);border-radius:10px;background:var(--gray-light);text-align:center">
         <div style="font-size:13px;font-weight:700;color:var(--gray-dark);margin-bottom:4px">주차별 전체접수 재동기화</div>
         <div style="font-size:12px;color:var(--gray);margin-bottom:14px">Railway 첫 배포 후 주차별 전체접수 데이터가 없을 때 실행하세요.</div>
