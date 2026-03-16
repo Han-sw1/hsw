@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>동일차량 장애현황 - ATEC</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css?v=20260313">
+  <style>
+    .chart-box { background:var(--white); border-radius:var(--radius); box-shadow:var(--shadow); padding:22px; min-width:0; overflow:hidden; margin-bottom:18px; }
+    .chart-title { font-size:15px; font-weight:700; color:var(--gray-dark); margin-bottom:16px; }
+
+    /* 필터 바 */
+    .filter-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .filter-label { font-size:13px; font-weight:600; color:var(--gray-dark); white-space:nowrap; }
+    .filter-bar input[type=date], .filter-bar select {
+      padding:8px 12px; border:1.5px solid var(--border); border-radius:6px;
+      font-size:13px; font-family:inherit; background:var(--white); cursor:pointer;
+    }
+    .filter-bar input[type=date]:focus, .filter-bar select:focus { outline:none; border-color:var(--primary); }
+    .filter-sep { font-size:13px; color:var(--gray); }
+    .btn-search {
+      padding:9px 20px; background:var(--primary); color:#fff; border:none;
+      border-radius:6px; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit;
+    }
+    .btn-search:hover { opacity:0.88; }
+    .btn-search:disabled { opacity:0.5; cursor:not-allowed; }
+
+    /* 요약 카드 */
+    .sv-summary { display:flex; gap:12px; margin-bottom:18px; flex-wrap:wrap; }
+    .sv-card {
+      flex:1; min-width:160px; background:var(--gray-light); border-radius:10px;
+      padding:16px 18px; text-align:center;
+    }
+    .sv-card .sc-label { font-size:12px; color:var(--gray); margin-bottom:6px; font-weight:600; }
+    .sv-card .sc-num { font-size:26px; font-weight:800; color:var(--primary); }
+    .sv-card .sc-unit { font-size:12px; color:var(--gray); margin-left:2px; }
+    .sv-card.diff-card .sc-num { color:var(--blue, #2563eb); }
+    .sv-card.total-card .sc-num { color:var(--gray-dark); }
+
+    /* 탭 필터 */
+    .sv-tabs { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+    .sv-tab {
+      padding:7px 18px; border:1.5px solid var(--border); border-radius:20px;
+      font-size:13px; font-weight:600; cursor:pointer; background:var(--white);
+      color:var(--gray); transition:all 0.15s;
+    }
+    .sv-tab.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+    .sv-tab:hover:not(.active) { border-color:var(--primary); color:var(--primary); }
+
+    /* 테이블 */
+    .sv-table-wrap { overflow-x:auto; }
+    .sv-table { width:100%; border-collapse:collapse; font-size:12.5px; }
+    .sv-table th { background:var(--brand-gray,#4a4a6a); color:#fff; padding:10px 12px; font-weight:700; white-space:nowrap; text-align:center; position:sticky; top:0; z-index:1; }
+    .sv-table td { padding:9px 12px; border-bottom:1px solid var(--border); vertical-align:middle; }
+    .sv-table td:first-child { font-weight:700; }
+    .sv-table tr.row-same { background:#FFF8F8; }
+    .sv-table tr.row-diff { background:#F8F9FF; }
+    .sv-table tr.row-first-same td:first-child { border-left:3px solid var(--primary); }
+    .sv-table tr.row-first-diff td:first-child { border-left:3px solid var(--blue, #2563eb); }
+    .sv-table tr:hover td { background:var(--gray-light) !important; }
+    .sv-badge {
+      display:inline-block; padding:2px 9px; border-radius:10px; font-size:11px; font-weight:700; white-space:nowrap;
+    }
+    .badge-same { background:#FFF0F4; color:var(--primary); border:1px solid #F5C0CF; }
+    .badge-diff { background:#EBF0FF; color:var(--blue,#2563eb); border:1px solid #AACCE8; }
+    .cnt-badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:800; background:var(--primary); color:#fff; }
+    .empty-msg { text-align:center; padding:40px; color:var(--gray); font-size:14px; }
+
+    /* 로딩 */
+    .sv-loading { text-align:center; padding:50px; color:var(--gray); font-size:14px; display:none; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="sidebar-toggle-btn" id="sidebarToggle" title="메뉴 열고 닫기">
+          <svg viewBox="0 0 20 20"><line x1="3" y1="5" x2="17" y2="5"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="3" y1="15" x2="17" y2="15"/></svg>
+        </button>
+        <a class="logo-area" href="/">
+          <img src="/static/logo.png" alt="ATEC 에이텍모빌리티" class="logo-img">
+        </a>
+      </div>
+      <div class="header-title">동일차량 장애현황</div>
+      <div class="header-right">
+        <div id="lastUpdateBadge" class="last-update-badge" style="display:none;" title="마지막 업데이트"></div>
+        <button class="theme-toggle" id="themeToggle" title="다크모드 전환">☀️</button>
+        <div class="header-divider"></div>
+        <div class="header-user">
+          <span class="header-user-name">{{ current_user.name }}</span>
+          {% if current_user.is_admin %}<span class="header-user-badge">관리자</span>{% endif %}
+        </div>
+      </div>
+    </div>
+  </header>
+  <div class="page-body">
+  {% include '_sidebar.html' %}
+  <div class="page-content">
+  <main class="main">
+
+    <!-- 필터 -->
+    <div class="chart-box">
+      <div class="chart-title">&#128663; 동일차량 장애현황</div>
+      <div class="filter-bar">
+        <span class="filter-label">기간</span>
+        <input type="date" id="dateFrom" value="2025-06-01">
+        <span class="filter-sep">~</span>
+        <input type="date" id="dateTo" value="2026-02-28">
+        <span class="filter-label" style="margin-left:8px">단말기</span>
+        <select id="terminalSel">
+          <option value="전체">전체</option>
+          <option value="B800">B800</option>
+          <option value="B700">B700</option>
+          <option value="B710">B710</option>
+          <option value="B620">B620</option>
+          <option value="지역버스">지역버스</option>
+        </select>
+        <span class="filter-label" style="margin-left:8px">최소 건수</span>
+        <select id="minCountSel">
+          <option value="2">2건 이상</option>
+          <option value="3">3건 이상</option>
+          <option value="4">4건 이상</option>
+          <option value="5">5건 이상</option>
+        </select>
+        <button class="btn-search" id="btnSearch" onclick="doSearch()">&#128269; 검색</button>
+      </div>
+    </div>
+
+    <!-- 결과 영역 -->
+    <div id="resultSection" style="display:none">
+      <!-- 요약 카드 -->
+      <div class="sv-summary">
+        <div class="sv-card total-card">
+          <div class="sc-label">다발 차량 합계</div>
+          <div><span class="sc-num" id="cardTotal">0</span><span class="sc-unit">대</span></div>
+        </div>
+        <div class="sv-card">
+          <div class="sc-label">동일장애 반복</div>
+          <div><span class="sc-num" id="cardSame">0</span><span class="sc-unit">대</span></div>
+        </div>
+        <div class="sv-card diff-card">
+          <div class="sc-label">다중장애 복합</div>
+          <div><span class="sc-num" id="cardDiff">0</span><span class="sc-unit">대</span></div>
+        </div>
+      </div>
+
+      <!-- 탭 + 테이블 -->
+      <div class="chart-box">
+        <div class="sv-tabs">
+          <button class="sv-tab active" data-type="전체" onclick="setTab(this)">전체</button>
+          <button class="sv-tab" data-type="동일장애" onclick="setTab(this)">동일장애 반복</button>
+          <button class="sv-tab" data-type="다중장애" onclick="setTab(this)">다중장애 복합</button>
+        </div>
+        <div class="sv-loading" id="svLoading">&#8987; 데이터를 불러오는 중...</div>
+        <div class="sv-table-wrap">
+          <table class="sv-table">
+            <thead>
+              <tr>
+                <th>차량번호</th>
+                <th>건수</th>
+                <th>날짜</th>
+                <th>배정부서</th>
+                <th>단말기</th>
+                <th>접수오류유형</th>
+                <th>교통사업자</th>
+                <th>처리유형</th>
+                <th>처리자</th>
+                <th>처리완료일</th>
+                <th>분류</th>
+              </tr>
+            </thead>
+            <tbody id="svTableBody"></tbody>
+          </table>
+        </div>
+        <div id="svEmptyMsg" class="empty-msg" style="display:none">조건에 맞는 데이터가 없습니다.</div>
+      </div>
+    </div>
+
+  </main>
+  </div>
+  </div>
+  <div id="toast" class="toast"></div>
+  <script src="/static/js/same_vehicle.js"></script>
+  <script src="/static/js/theme.js"></script>
+</body>
+</html>

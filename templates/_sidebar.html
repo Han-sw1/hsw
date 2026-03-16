@@ -40,6 +40,15 @@
       </svg>
       전체 전화접수 현황
     </a>
+    <a href="/same-vehicle" class="nav-item {% if active_page == 'same_vehicle' %}active{% endif %}">
+      <svg class="nav-icon" viewBox="0 0 20 20">
+        <rect x="2" y="6" width="16" height="9" rx="1.5"/>
+        <circle cx="6" cy="15" r="2"/><circle cx="14" cy="15" r="2"/>
+        <line x1="6" y1="6" x2="6" y2="3"/><line x1="14" y1="6" x2="14" y2="3"/>
+        <line x1="6" y1="3" x2="14" y2="3"/>
+      </svg>
+      동일차량 장애현황
+    </a>
 
     {% if current_user.is_admin %}
     <div class="nav-section-label">설정</div>

@@ -467,7 +467,7 @@ def insert_monthly():
         except Exception as _e:
             print(f"[insert_monthly] stats DB 갱신 오류: {_e}")
 
-        # 주차 확정 시 원본 raw 데이터로 전체접수 DB 업데이트
+        # 주차 확정 시 원본 raw 데이터로 전체접수 DB 업데이트 + raw_confirmed/ 영구 저장
         if mode == "weekly" and week_label:
             try:
                 raw_pkl_path = os.path.join(_RESULTS_DIR, result_key + ".raw.pkl")
@@ -476,6 +476,13 @@ def insert_monthly():
                         _raw_df = pickle.load(_f)
                     from weekly_summary import upsert_전체접수_from_raw
                     upsert_전체접수_from_raw(_raw_df)
+                    # raw_confirmed/ 영구 저장 (동일차량 장애현황용)
+                    _rc_dir = os.path.join(_BASE_DIR, "raw_confirmed")
+                    os.makedirs(_rc_dir, exist_ok=True)
+                    _safe_label = week_label.replace(" ", "_").replace("/", "_")
+                    _rc_path = os.path.join(_rc_dir, f"{_safe_label}.pkl")
+                    with open(_rc_path, "wb") as _f2:
+                        pickle.dump(_raw_df, _f2)
             except Exception as _e:
                 print(f"[weekly_summary] 전체접수 DB 갱신 오류: {_e}")
 
@@ -865,6 +872,28 @@ def download_monthly(filename):
 @login_required
 def rawdata_page():
     return render_template("rawdata.html", active_page="rawdata")
+
+
+@app.route("/same-vehicle")
+@login_required
+def same_vehicle_page():
+    return render_template("same_vehicle.html", active_page="same_vehicle")
+
+
+@app.route("/api/same-vehicle-stats", methods=["POST"])
+@login_required
+def same_vehicle_stats():
+    from same_vehicle import query_same_vehicle
+    data = request.json or {}
+    result = query_same_vehicle(
+        date_from=data.get("date_from"),
+        date_to=data.get("date_to"),
+        terminal=data.get("terminal", "전체"),
+        min_count=int(data.get("min_count", 2)),
+    )
+    resp = make_response(jsonify(result))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 @app.route("/api/rawdata-stats")
 def rawdata_stats():

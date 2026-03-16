@@ -23,6 +23,16 @@ def _connect():
 
 def init_db():
     """테이블 생성 (없으면 생성)."""
+    # Migration: same_vehicle_raw 스키마 변경 시 기존 테이블 재생성
+    with _connect() as conn:
+        cols_rows = conn.execute("PRAGMA table_info(same_vehicle_raw)").fetchall()
+        if cols_rows:
+            existing = {row[1] for row in cols_rows}
+            if '처리유형' not in existing:
+                conn.execute("DROP TABLE IF EXISTS same_vehicle_raw")
+                conn.execute("DROP TABLE IF EXISTS same_vehicle_sources")
+                conn.commit()
+
     with _connect() as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS confirmed_weeks (
@@ -63,6 +73,29 @@ def init_db():
                 name          TEXT NOT NULL DEFAULT '',
                 is_admin      INTEGER NOT NULL DEFAULT 0,
                 created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS same_vehicle_raw (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                차량번호      TEXT NOT NULL,
+                날짜          TEXT NOT NULL,
+                배정부서      TEXT DEFAULT '',
+                단말기코드    TEXT DEFAULT '',
+                접수오류유형  TEXT DEFAULT '',
+                교통사업자명  TEXT DEFAULT '',
+                처리유형      TEXT DEFAULT '',
+                처리자        TEXT DEFAULT '',
+                처리완료일시  TEXT DEFAULT '',
+                source        TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_sv_date     ON same_vehicle_raw(날짜);
+            CREATE INDEX IF NOT EXISTS idx_sv_car      ON same_vehicle_raw(차량번호);
+            CREATE INDEX IF NOT EXISTS idx_sv_terminal ON same_vehicle_raw(단말기코드);
+            CREATE INDEX IF NOT EXISTS idx_sv_source   ON same_vehicle_raw(source);
+
+            CREATE TABLE IF NOT EXISTS same_vehicle_sources (
+                source     TEXT PRIMARY KEY,
+                loaded_at  DATETIME DEFAULT CURRENT_TIMESTAMP
             );
         """)
 
@@ -292,3 +325,135 @@ def migrate_excel_stats():
                 print(f"[DB] 마이그레이션 완료: {fn}")
         except Exception as e:
             print(f"[DB] 마이그레이션 오류 ({fn}): {e}")
+
+
+# ── same_vehicle_raw ──────────────────────────────────────────────────────────
+
+def sv_is_source_loaded(source):
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM same_vehicle_sources WHERE source=?", (source,)
+        ).fetchone()
+    return row is not None
+
+
+def sv_insert_rows(rows, source):
+    """rows: list of dict. source: 'history_B시리즈' 등."""
+    with _lock:
+        with _connect() as conn:
+            conn.executemany(
+                """INSERT INTO same_vehicle_raw
+                   (차량번호, 날짜, 배정부서, 단말기코드, 접수오류유형, 교통사업자명, 처리유형, 처리자, 처리완료일시, source)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                [
+                    (r["차량번호"], r["날짜"], r["배정부서"], r["단말기코드"],
+                     r["접수오류유형"], r["교통사업자명"], r["처리유형"], r["처리자"], r["처리완료일시"], source)
+                    for r in rows
+                ],
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO same_vehicle_sources (source) VALUES (?)", (source,)
+            )
+            conn.commit()
+
+
+def sv_query(date_from, date_to, terminal, min_count):
+    """
+    날짜 범위 + 단말기 필터 → min_count 이상 차량의 모든 행 반환.
+    반환: (total_cars, same_fault_cars, diff_fault_cars, rows)
+    """
+    REGIONAL = ("B650", "B500", "B400", "포항B800", "B520D", "B600")
+
+    # 단말기 WHERE 절
+    if terminal == "전체":
+        term_sql = ""
+        term_params = []
+    elif terminal == "지역버스":
+        placeholders = ",".join("?" * len(REGIONAL))
+        term_sql = f"AND 단말기코드 IN ({placeholders})"
+        term_params = list(REGIONAL)
+    else:
+        term_sql = "AND 단말기코드 = ?"
+        term_params = [terminal]
+
+    base_params = [date_from, date_to] + term_params
+
+    with _connect() as conn:
+        # 1) min_count 이상인 차량 목록
+        cars_sql = f"""
+            SELECT 차량번호, COUNT(*) AS cnt
+            FROM same_vehicle_raw
+            WHERE 날짜 >= ? AND 날짜 <= ? {term_sql}
+            GROUP BY 차량번호
+            HAVING cnt >= ?
+        """
+        car_rows = conn.execute(cars_sql, base_params + [min_count]).fetchall()
+        if not car_rows:
+            return 0, 0, 0, []
+
+        car_counts = {r["차량번호"]: r["cnt"] for r in car_rows}
+        car_list = list(car_counts.keys())
+
+        # 2) 해당 차량들의 모든 행
+        placeholders = ",".join("?" * len(car_list))
+        rows_sql = f"""
+            SELECT 차량번호, 날짜, 배정부서, 단말기코드, 접수오류유형, 교통사업자명, 노선명, 처리완료일시
+            FROM same_vehicle_raw
+            WHERE 날짜 >= ? AND 날짜 <= ? {term_sql}
+              AND 차량번호 IN ({placeholders})
+            ORDER BY cnt_order DESC, 차량번호 ASC, 날짜 ASC
+        """
+        # cnt_order를 ORDER BY에 쓰려면 서브쿼리 필요
+        rows_sql = f"""
+            SELECT r.차량번호, r.날짜, r.배정부서, r.단말기코드, r.접수오류유형,
+                   r.교통사업자명, r.처리유형, r.처리자, r.처리완료일시
+            FROM same_vehicle_raw r
+            WHERE r.날짜 >= ? AND r.날짜 <= ? {term_sql}
+              AND r.차량번호 IN ({placeholders})
+            ORDER BY (SELECT COUNT(*) FROM same_vehicle_raw
+                      WHERE 차량번호=r.차량번호 AND 날짜>=? AND 날짜<=? {term_sql}
+                     ) DESC,
+                     r.차량번호 ASC, r.날짜 ASC
+        """
+        all_params = [date_from, date_to] + term_params + car_list + \
+                     [date_from, date_to] + term_params
+        all_rows = conn.execute(rows_sql, all_params).fetchall()
+
+        # 3) 동일/다중장애 분류
+        from collections import defaultdict
+        car_faults = defaultdict(set)
+        for r in all_rows:
+            ft = (r["접수오류유형"] or "").strip()
+            if ft:
+                car_faults[r["차량번호"]].add(ft)
+
+        car_type = {
+            car: "동일장애" if len(fts) <= 1 else "다중장애"
+            for car, fts in car_faults.items()
+        }
+        # fault 없는 차량
+        for car in car_list:
+            if car not in car_type:
+                car_type[car] = "동일장애"
+
+        same_cnt = sum(1 for t in car_type.values() if t == "동일장애")
+        diff_cnt = sum(1 for t in car_type.values() if t == "다중장애")
+
+        result_rows = [
+            {
+                "차량번호": r["차량번호"],
+                "날짜": r["날짜"],
+                "배정부서": r["배정부서"] or "",
+                "단말기구분": r["단말기코드"] or "",
+                "접수오류유형": r["접수오류유형"] or "",
+                "교통사업자명": r["교통사업자명"] or "",
+                "처리유형": r["처리유형"] or "",
+                "처리자": r["처리자"] or "",
+                "처리완료일시": r["처리완료일시"] or "",
+                "유형": car_type.get(r["차량번호"], ""),
+                "차량건수": car_counts.get(r["차량번호"], 0),
+            }
+            for r in all_rows
+        ]
+
+    return len(car_list), same_cnt, diff_cnt, result_rows
