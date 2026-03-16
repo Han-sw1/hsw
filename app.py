@@ -91,6 +91,13 @@ def _startup_init():
         _db.init_db()
         if _db.is_db_empty():
             _db.migrate_excel_stats()
+        # 슈퍼관리자 계정 자동 생성 (환경변수 SUPER_ADMIN_PW 설정 시)
+        _super_pw = os.environ.get("SUPER_ADMIN_PW", "")
+        if _super_pw and not _db.get_user_by_username(SUPER_ADMIN):
+            from werkzeug.security import generate_password_hash as _gph
+            _db.create_user(SUPER_ADMIN, _gph(_super_pw), "한상우")
+            _db.set_admin(SUPER_ADMIN, True)
+            print(f"[DB] 슈퍼관리자 '{SUPER_ADMIN}' 자동 생성 완료")
     except Exception as e:
         print(f"[DB] 초기화 오류: {e}")
 
