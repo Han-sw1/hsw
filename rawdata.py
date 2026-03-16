@@ -10,6 +10,8 @@ from datetime import datetime
 # 파일 경로 (config.json에서 오버라이드 가능)
 _BASE = os.path.dirname(__file__)
 _CONFIG_PATH = os.path.join(_BASE, "config.json")
+# DATA_DIR 환경변수가 있으면(Railway) 해당 디렉토리 기준으로 상대경로 해석
+_DATA_DIR = os.environ.get("DATA_DIR", _BASE)
 
 def _get_rawdata_paths():
     paths = {}
@@ -21,7 +23,7 @@ def _get_rawdata_paths():
             for key in ("b_series", "regional", "b620"):
                 p = rd.get(key, "")
                 if p and not os.path.isabs(p):
-                    p = os.path.join(_BASE, p)
+                    p = os.path.join(_DATA_DIR, p)
                 paths[key] = p
         except Exception:
             pass

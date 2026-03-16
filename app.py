@@ -982,6 +982,42 @@ def admin_resync_weekly():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/upload-rawdata", methods=["POST"])
+@login_required
+def upload_rawdata():
+    """전체 전화접수 현황용 원본 xlsx 업로드 (DATA_DIR/data/ 저장)."""
+    if current_user.username != SUPER_ADMIN:
+        return jsonify({"error": "슈퍼관리자만 사용 가능합니다."}), 403
+    file_type = request.form.get("type")  # b_series | regional | b620
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"error": "파일 없음"}), 400
+    if file_type not in ("b_series", "regional", "b620"):
+        return jsonify({"error": "type 파라미터 오류"}), 400
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in (".xls", ".xlsx"):
+        return jsonify({"error": "xlsx 파일만 가능합니다."}), 400
+
+    save_dir = os.path.join(_BASE_DIR, "data")
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, f.filename)
+    f.save(save_path)
+
+    # config.json rawdata_files 갱신
+    cfg = load_config()
+    cfg.setdefault("rawdata_files", {})[file_type] = f"data/{f.filename}"
+    save_config(cfg)
+
+    # DB 캐시 무효화
+    try:
+        import database as _dbi
+        _dbi.rawdata_cache_set(file_type, None, 0)
+    except Exception:
+        pass
+
+    return jsonify({"ok": True, "filename": f.filename})
+
+
 @app.route("/api/rawdata-stats")
 def rawdata_stats():
     from rawdata import get_rawdata_stats

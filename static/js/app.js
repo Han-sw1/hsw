@@ -209,10 +209,24 @@ if (_btnSettings) _btnSettings.addEventListener('click', () => {
       ks.className = 'ref-status missing';
     }
   }).catch(() => {});
-  // 로컬 경로 fallback
+  // 로컬 경로 fallback + rawdata 현황
   fetch('/api/config').then(r => r.json()).then(cfg => {
     document.getElementById('criteriaPath').value = cfg.criteria_path || '';
     document.getElementById('citsPath').value = cfg.cits_path || '';
+    // rawdata 파일 현황
+    const rd = cfg.rawdata_files || {};
+    const map = { b_series: 'rdBSeriesStatus', b620: 'rdB620Status', regional: 'rdRegionalStatus' };
+    for (const [key, elId] of Object.entries(map)) {
+      const el = document.getElementById(elId);
+      if (!el) continue;
+      if (rd[key]) {
+        el.className = 'ref-status ok';
+        el.textContent = '✔ ' + rd[key].split('/').pop();
+      } else {
+        el.className = 'ref-status missing';
+        el.textContent = '미설정';
+      }
+    }
   }).catch(() => {});
 });
 
@@ -248,6 +262,49 @@ document.getElementById('criteriaFileInput').addEventListener('change', function
 });
 document.getElementById('citsFileInput').addEventListener('change', function() {
   uploadReferenceFile(this, 'cits', document.getElementById('citsStatus'));
+});
+
+// 전체 전화접수 현황 xlsx 업로드
+function uploadRawdataFile(inputEl, type, statusEl) {
+  const file = inputEl.files[0];
+  if (!file) return;
+  const status = document.getElementById('rdUploadStatus');
+  statusEl.className = 'ref-status';
+  statusEl.textContent = '업로드 중...';
+  status.style.color = 'var(--gray)';
+  status.textContent = `${file.name} 업로드 중...`;
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('type', type);
+  fetch('/api/upload-rawdata', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        statusEl.className = 'ref-status ok';
+        statusEl.textContent = d.filename;
+        status.style.color = 'var(--green)';
+        status.textContent = `✓ ${d.filename} 업로드 완료. 재동기화 버튼을 클릭하세요.`;
+      } else {
+        statusEl.className = 'ref-status missing';
+        statusEl.textContent = '업로드 실패';
+        status.style.color = 'var(--primary)';
+        status.textContent = '오류: ' + d.error;
+      }
+    })
+    .catch(() => {
+      statusEl.className = 'ref-status missing';
+      statusEl.textContent = '업로드 실패';
+    });
+  inputEl.value = '';
+}
+document.getElementById('rdBSeriesInput').addEventListener('change', function() {
+  uploadRawdataFile(this, 'b_series', document.getElementById('rdBSeriesStatus'));
+});
+document.getElementById('rdB620Input').addEventListener('change', function() {
+  uploadRawdataFile(this, 'b620', document.getElementById('rdB620Status'));
+});
+document.getElementById('rdRegionalInput').addEventListener('change', function() {
+  uploadRawdataFile(this, 'regional', document.getElementById('rdRegionalStatus'));
 });
 ['closeSettings', 'cancelSettings'].forEach(id =>
   document.getElementById(id).addEventListener('click', closeSettings)
