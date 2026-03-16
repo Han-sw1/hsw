@@ -321,7 +321,8 @@ def sync_전체접수_to_db(force=False):
                         print(f"[weekly_sync] {_fname}: DataFrame이 아님 (타입: {type(_df).__name__}) - 건너뜀")
                         continue
                     _pkl_stats = compute_전체접수_from_df(_df)
-                    print(f"[weekly_sync] {_fname}: {{{', '.join(f'{d}={sum(w[\"total\"] for w in ws.values())}건' for d, ws in _pkl_stats.items())}}}")
+                    _summary = ", ".join(f"{d}={sum(w['total'] for w in ws.values())}건" for d, ws in _pkl_stats.items())
+                    print(f"[weekly_sync] {_fname}: {{{_summary}}}")
                     for _dev, _weeks in _pkl_stats.items():
                         for _wk, _wdata in _weeks.items():
                             _db.upsert_weekly_전체(
