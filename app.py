@@ -603,6 +603,15 @@ def unconfirm_week():
             _db.clear_weekly_전체_by_device_week(week, _dev)
     except Exception as _e:
         print(f"[weekly_summary] 전체접수 삭제 오류: {_e}")
+    # 동일차량 장애현황 DB에서 해당 주차 삭제
+    try:
+        _safe_label = week.replace(" ", "_").replace("/", "_")
+        _rc_path = os.path.join(_BASE_DIR, "raw_confirmed", f"{_safe_label}.pkl")
+        if os.path.exists(_rc_path):
+            os.remove(_rc_path)
+        _db.sv_delete_source(f"confirmed_{_safe_label}.pkl")
+    except Exception as _e:
+        print(f"[same_vehicle] 주차 취소 삭제 오류: {_e}")
     return jsonify({"ok": True})
 
 

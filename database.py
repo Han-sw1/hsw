@@ -329,6 +329,15 @@ def migrate_excel_stats():
 
 # ── same_vehicle_raw ──────────────────────────────────────────────────────────
 
+def sv_delete_source(source):
+    """특정 source의 raw 데이터 및 소스 기록 삭제."""
+    with _lock:
+        with _connect() as conn:
+            conn.execute("DELETE FROM same_vehicle_raw WHERE source=?", (source,))
+            conn.execute("DELETE FROM same_vehicle_sources WHERE source=?", (source,))
+            conn.commit()
+
+
 def sv_is_source_loaded(source):
     with _connect() as conn:
         row = conn.execute(
