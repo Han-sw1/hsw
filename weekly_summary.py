@@ -306,6 +306,27 @@ def sync_전체접수_to_db(force=False):
                     data["total"], data["top_faults"]
                 )
 
+        # raw_confirmed/ pkl 데이터를 xlsx보다 나중에 적용 (우선순위 높음)
+        # xlsx가 날짜 범위 밖의 주차(예: 3월1주 중 3/1~3/4)를 덮어쓰지 않도록 보정
+        import pickle as _pkl
+        _rc_dir = os.path.join(_get_data_dir(), "raw_confirmed")
+        if os.path.exists(_rc_dir):
+            for _fname in sorted(os.listdir(_rc_dir)):
+                if not _fname.endswith(".pkl"):
+                    continue
+                try:
+                    with open(os.path.join(_rc_dir, _fname), "rb") as _pf:
+                        _df = _pkl.load(_pf)
+                    _pkl_stats = compute_전체접수_from_df(_df)
+                    for _dev, _weeks in _pkl_stats.items():
+                        for _wk, _wdata in _weeks.items():
+                            _db.upsert_weekly_전체(
+                                _wk, _dev,
+                                _wdata["total"], _wdata["top_faults"]
+                            )
+                except Exception:
+                    pass
+
         _last_mtime = cache_key
         _save_sync_state(cache_key)
 
