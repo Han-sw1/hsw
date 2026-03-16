@@ -50,7 +50,7 @@
       동일차량 장애현황
     </a>
 
-    {% if current_user.is_admin %}
+    {% if is_super_admin %}
     <div class="nav-section-label">설정</div>
     <button class="nav-item" id="btnSettings">
       <svg class="nav-icon" viewBox="0 0 20 20">

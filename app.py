@@ -42,6 +42,8 @@ import threading
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 REFERENCE_DIR = os.path.join(os.path.dirname(__file__), "reference_files")
 
+SUPER_ADMIN = "sw_han"
+
 DEFAULT_CONFIG = {
     "criteria_path": "",
     "cits_path": "",
@@ -72,6 +74,16 @@ class User(UserMixin):
 def load_user(user_id):
     row = _db.get_user_by_id(int(user_id))
     return User(row) if row else None
+
+
+@app.context_processor
+def inject_super_admin():
+    from flask_login import current_user
+    try:
+        is_super = current_user.is_authenticated and current_user.username == SUPER_ADMIN
+    except Exception:
+        is_super = False
+    return {"is_super_admin": is_super}
 
 # DB 초기화 (백그라운드)
 def _startup_init():
@@ -588,8 +600,8 @@ def confirm_week():
 @app.route("/api/unconfirm-week", methods=["POST"])
 @login_required
 def unconfirm_week():
-    if not current_user.is_admin:
-        return jsonify({"error": "관리자만 사용할 수 있습니다."}), 403
+    if current_user.username != SUPER_ADMIN:
+        return jsonify({"error": "슈퍼관리자만 사용할 수 있습니다."}), 403
     data = request.json
     filename = data.get("monthly_filename")
     week = data.get("week_label")
@@ -930,6 +942,8 @@ def admin_set_admin():
         return jsonify({"error": "아이디 누락"}), 400
     if username == current_user.username:
         return jsonify({"error": "자기 자신의 권한은 변경할 수 없습니다."}), 400
+    if username == SUPER_ADMIN:
+        return jsonify({"error": "슈퍼관리자 계정은 변경할 수 없습니다."}), 403
     user = _db.get_user_by_username(username)
     if not user:
         return jsonify({"error": f"'{username}' 아이디를 찾을 수 없습니다."}), 404

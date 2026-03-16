@@ -810,7 +810,7 @@ function updateWeekActionUI() {
     badge.textContent = '🔒 확정됨';
     badge.className = 'week-badge week-badge-confirmed';
     btnConfirm.style.display = 'none';
-    btnUnconfirm.style.display = 'inline-flex';
+    btnUnconfirm.style.display = window.IS_SUPER_ADMIN ? 'inline-flex' : 'none';
     btnDelete.style.display = 'none';
     btnInsert.disabled = true;
   } else {
