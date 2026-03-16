@@ -296,6 +296,63 @@ document.getElementById('saveSettings').addEventListener('click', () => {
   });
 });
 
+// ─── 회원 관리 ───────────────────────────────────────
+let _foundUser = null;
+
+document.getElementById('btnUserSearch').addEventListener('click', searchUser);
+document.getElementById('userSearchInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') searchUser();
+});
+
+function searchUser() {
+  const q = document.getElementById('userSearchInput').value.trim();
+  const result = document.getElementById('userSearchResult');
+  const errEl = document.getElementById('userSearchError');
+  result.style.display = 'none';
+  errEl.style.display = 'none';
+  _foundUser = null;
+  if (!q) return;
+  fetch('/api/admin/search-user?q=' + encodeURIComponent(q))
+    .then(r => r.json())
+    .then(d => {
+      if (!d.ok) { errEl.textContent = d.error; errEl.style.display = 'block'; return; }
+      _foundUser = d;
+      document.getElementById('userResultName').textContent = d.name || d.username;
+      document.getElementById('userResultId').textContent = '(' + d.username + ')';
+      const badge = document.getElementById('userResultBadge');
+      if (d.is_admin) {
+        badge.textContent = '관리자';
+        badge.style.cssText = 'margin-left:6px;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:#FFF0F4;color:var(--primary);border:1px solid #F5C0CF';
+      } else {
+        badge.textContent = '일반';
+        badge.style.cssText = 'margin-left:6px;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:#e5e7eb;color:var(--gray-dark);border:1px solid #d1d5db';
+      }
+      document.getElementById('btnGrantAdmin').style.display = d.is_admin ? 'none' : 'inline-block';
+      document.getElementById('btnRevokeAdmin').style.display = d.is_admin ? 'inline-block' : 'none';
+      result.style.display = 'block';
+    })
+    .catch(() => { errEl.textContent = '검색 오류'; errEl.style.display = 'block'; });
+}
+
+function setAdminRole(isAdmin) {
+  if (!_foundUser) return;
+  fetch('/api/admin/set-admin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: _foundUser.username, is_admin: isAdmin }),
+  })
+    .then(r => r.json())
+    .then(d => {
+      if (!d.ok) { showToast(d.error, 'error'); return; }
+      showToast(`${_foundUser.name || _foundUser.username} → ${isAdmin ? '관리자' : '일반 계정'} 변경 완료`, 'success');
+      searchUser();
+    })
+    .catch(() => showToast('변경 실패', 'error'));
+}
+
+document.getElementById('btnGrantAdmin').addEventListener('click', () => setAdminRole(true));
+document.getElementById('btnRevokeAdmin').addEventListener('click', () => setAdminRole(false));
+
 // ─── 파일 선택 ───────────────────────────────────────
 const fileInput = document.getElementById('fileInput');
 const dropZone  = document.getElementById('dropZone');

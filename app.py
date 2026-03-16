@@ -904,6 +904,39 @@ def same_vehicle_stats():
     resp.headers["Cache-Control"] = "no-store"
     return resp
 
+@app.route("/api/admin/search-user")
+@login_required
+def admin_search_user():
+    if not current_user.is_admin:
+        return jsonify({"error": "관리자만 사용 가능합니다."}), 403
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify({"error": "아이디를 입력하세요."}), 400
+    user = _db.get_user_by_username(q)
+    if not user:
+        return jsonify({"error": f"'{q}' 아이디를 찾을 수 없습니다."}), 404
+    return jsonify({"ok": True, "username": user["username"], "name": user["name"], "is_admin": bool(user["is_admin"])})
+
+
+@app.route("/api/admin/set-admin", methods=["POST"])
+@login_required
+def admin_set_admin():
+    if not current_user.is_admin:
+        return jsonify({"error": "관리자만 사용 가능합니다."}), 403
+    data = request.json or {}
+    username = data.get("username", "").strip()
+    is_admin = bool(data.get("is_admin", False))
+    if not username:
+        return jsonify({"error": "아이디 누락"}), 400
+    if username == current_user.username:
+        return jsonify({"error": "자기 자신의 권한은 변경할 수 없습니다."}), 400
+    user = _db.get_user_by_username(username)
+    if not user:
+        return jsonify({"error": f"'{username}' 아이디를 찾을 수 없습니다."}), 404
+    _db.set_admin(username, is_admin)
+    return jsonify({"ok": True, "username": username, "is_admin": is_admin})
+
+
 @app.route("/api/rawdata-stats")
 def rawdata_stats():
     from rawdata import get_rawdata_stats
