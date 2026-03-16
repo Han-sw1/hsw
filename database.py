@@ -97,6 +97,13 @@ def init_db():
                 source     TEXT PRIMARY KEY,
                 loaded_at  DATETIME DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS rawdata_cache (
+                key          TEXT PRIMARY KEY,
+                data         TEXT NOT NULL,
+                source_mtime REAL DEFAULT 0,
+                updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
         """)
 
 
@@ -466,3 +473,32 @@ def sv_query(date_from, date_to, terminal, min_count):
         ]
 
     return len(car_list), same_cnt, diff_cnt, result_rows
+
+
+# ── rawdata_cache ─────────────────────────────────────────────────────────────
+
+def rawdata_cache_get(key):
+    """key에 해당하는 캐시 데이터와 mtime 반환. 없으면 (None, 0)."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT data, source_mtime FROM rawdata_cache WHERE key=?", (key,)
+        ).fetchone()
+    if row:
+        return json.loads(row["data"]), row["source_mtime"]
+    return None, 0
+
+
+def rawdata_cache_set(key, data, source_mtime):
+    """key에 대한 캐시 저장/갱신."""
+    with _lock:
+        with _connect() as conn:
+            conn.execute(
+                """INSERT INTO rawdata_cache (key, data, source_mtime)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(key) DO UPDATE SET
+                       data=excluded.data,
+                       source_mtime=excluded.source_mtime,
+                       updated_at=CURRENT_TIMESTAMP""",
+                (key, json.dumps(data, ensure_ascii=False), source_mtime),
+            )
+            conn.commit()

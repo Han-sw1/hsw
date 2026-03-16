@@ -123,41 +123,15 @@ def parse_regional(path):
     return result
 
 import threading as _threading
-_BASE_DIR = os.environ.get("DATA_DIR", _BASE)
-_DISK_CACHE_PATH = os.path.join(_BASE_DIR, "rawdata_cache.json")
-_CACHE = {}
-_CACHE_MTIME = {}
-_cache_lock = _threading.Lock()
+import database as _db
 
-def _load_disk_cache():
-    """디스크 캐시 로드 → (_CACHE, _CACHE_MTIME) 초기화."""
-    global _CACHE, _CACHE_MTIME
-    if not os.path.exists(_DISK_CACHE_PATH):
-        return
-    try:
-        with open(_DISK_CACHE_PATH, "r", encoding="utf-8") as f:
-            saved = json.load(f)
-        _CACHE = saved.get("data", {})
-        _CACHE_MTIME = saved.get("mtime", {})
-    except Exception:
-        pass
+_parse_lock = _threading.Lock()
 
-def _save_disk_cache():
-    try:
-        with open(_DISK_CACHE_PATH, "w", encoding="utf-8") as f:
-            json.dump({"data": _CACHE, "mtime": _CACHE_MTIME}, f, ensure_ascii=False)
-    except Exception:
-        pass
-
-# 서버 시작 시 디스크 캐시 로드
-_load_disk_cache()
 
 def get_rawdata_stats(force_refresh=False):
-    global _CACHE, _CACHE_MTIME
     paths = _get_rawdata_paths()
-
-    changed = False
     result = {"ok": True}
+
     for key, parse_fn, path_key in [
         ("b_series", parse_b_series, "b_series"),
         ("b620",     parse_b_series, "b620"),
@@ -167,23 +141,31 @@ def get_rawdata_stats(force_refresh=False):
         if not path or not os.path.exists(path):
             result[key] = None
             continue
-        mtime = os.path.getmtime(path)
-        if not force_refresh and key in _CACHE and _CACHE_MTIME.get(key) == mtime:
-            result[key] = _CACHE[key]
-            continue
-        try:
-            data = parse_fn(path)
-            _CACHE[key] = data
-            _CACHE_MTIME[key] = mtime
-            result[key] = data
-            changed = True
-        except Exception as e:
-            result[key] = {"error": str(e)}
 
-    if changed:
-        _save_disk_cache()
+        mtime = os.path.getmtime(path)
+        if not force_refresh:
+            cached, cached_mtime = _db.rawdata_cache_get(key)
+            if cached is not None and cached_mtime == mtime:
+                result[key] = cached
+                continue
+
+        # 파일을 하나씩 파싱 (메모리 절약)
+        with _parse_lock:
+            # 락 안에서 다시 확인 (중복 파싱 방지)
+            if not force_refresh:
+                cached, cached_mtime = _db.rawdata_cache_get(key)
+                if cached is not None and cached_mtime == mtime:
+                    result[key] = cached
+                    continue
+            try:
+                data = parse_fn(path)
+                _db.rawdata_cache_set(key, data, mtime)
+                result[key] = data
+            except Exception as e:
+                result[key] = {"error": str(e)}
 
     return result
+
 
 def prewarm():
     """서버 시작 시 백그라운드에서 캐시 미리 로드."""
