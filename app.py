@@ -8,24 +8,28 @@ import re as _re_auth
 _BASE_DIR = os.environ.get("DATA_DIR", os.path.dirname(__file__))
 _RESULTS_DIR = os.path.join(_BASE_DIR, "results")
 
-# Railway Volume 초기화: 월간 파일 및 rawdata가 없으면 repo에서 복사
+# Railway Volume 초기화: 월간 파일이 없으면 repo에서 복사
+_REPO_DIR = os.path.dirname(__file__)
 _VOLUME_MONTHLY = os.path.join(_BASE_DIR, "monthly_files")
-_REPO_MONTHLY = os.path.join(os.path.dirname(__file__), "monthly_files")
-if _BASE_DIR != os.path.dirname(__file__):
+_REPO_MONTHLY = os.path.join(_REPO_DIR, "monthly_files")
+if _BASE_DIR != _REPO_DIR:
     os.makedirs(_VOLUME_MONTHLY, exist_ok=True)
     for _f in os.listdir(_REPO_MONTHLY):
+        _src = os.path.join(_REPO_MONTHLY, _f)
         _dst = os.path.join(_VOLUME_MONTHLY, _f)
-        if not os.path.exists(_dst):
-            shutil.copy2(os.path.join(_REPO_MONTHLY, _f), _dst)
+        if os.path.isfile(_src) and not os.path.exists(_dst):
+            shutil.copy2(_src, _dst)
     # data/ 폴더 (rawdata xlsx): repo → volume 복사
-    _repo_data = os.path.join(os.path.dirname(__file__), "data")
+    # 단, 볼륨이 /app/data에 마운트된 경우 src==dst 충돌 방지 (스킵)
+    _repo_data = os.path.join(_REPO_DIR, "data")
     _vol_data = os.path.join(_BASE_DIR, "data")
-    if os.path.exists(_repo_data):
+    if os.path.exists(_repo_data) and os.path.realpath(_repo_data) != os.path.realpath(_BASE_DIR):
         os.makedirs(_vol_data, exist_ok=True)
         for _f in os.listdir(_repo_data):
+            _src = os.path.join(_repo_data, _f)
             _dst = os.path.join(_vol_data, _f)
-            if not os.path.exists(_dst):
-                shutil.copy2(os.path.join(_repo_data, _f), _dst)
+            if os.path.isfile(_src) and not os.path.exists(_dst):
+                shutil.copy2(_src, _dst)
 import tempfile
 import json
 import pickle
