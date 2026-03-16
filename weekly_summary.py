@@ -317,15 +317,19 @@ def sync_전체접수_to_db(force=False):
                 try:
                     with open(os.path.join(_rc_dir, _fname), "rb") as _pf:
                         _df = _pkl.load(_pf)
+                    if not hasattr(_df, "columns"):
+                        print(f"[weekly_sync] {_fname}: DataFrame이 아님 (타입: {type(_df).__name__}) - 건너뜀")
+                        continue
                     _pkl_stats = compute_전체접수_from_df(_df)
+                    print(f"[weekly_sync] {_fname}: {{{', '.join(f'{d}={sum(w[\"total\"] for w in ws.values())}건' for d, ws in _pkl_stats.items())}}}")
                     for _dev, _weeks in _pkl_stats.items():
                         for _wk, _wdata in _weeks.items():
                             _db.upsert_weekly_전체(
                                 _wk, _dev,
                                 _wdata["total"], _wdata["top_faults"]
                             )
-                except Exception:
-                    pass
+                except Exception as _e:
+                    print(f"[weekly_sync] {_fname} 오류: {_e}")
 
         _last_mtime = cache_key
         _save_sync_state(cache_key)

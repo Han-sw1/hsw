@@ -981,9 +981,37 @@ def admin_weekly_debug():
     conn.close()
     rc_dir = os.path.join(_BASE_DIR, "raw_confirmed")
     pkl_files = os.listdir(rc_dir) if os.path.exists(rc_dir) else []
+
+    # pkl 파일 실제 계산값 포함
+    pkl_debug = []
+    for fname in pkl_files:
+        if not fname.endswith(".pkl"):
+            continue
+        fpath = os.path.join(rc_dir, fname)
+        entry = {"file": fname, "status": None, "computed": None, "error": None}
+        try:
+            with open(fpath, "rb") as _f:
+                _obj = pickle.load(_f)
+            if not hasattr(_obj, "columns"):
+                entry["status"] = "not_dataframe"
+                entry["error"] = f"타입: {type(_obj).__name__}"
+            else:
+                from weekly_summary import compute_전체접수_from_df
+                _stats = compute_전체접수_from_df(_obj)
+                entry["status"] = "ok"
+                entry["computed"] = {
+                    dev: {wk: v["total"] for wk, v in weeks.items()}
+                    for dev, weeks in _stats.items()
+                }
+        except Exception as _e:
+            entry["status"] = "error"
+            entry["error"] = str(_e)
+        pkl_debug.append(entry)
+
     return jsonify({
         "weekly_stats": [dict(r) for r in rows],
         "raw_confirmed_files": pkl_files,
+        "pkl_debug": pkl_debug,
     })
 
 
@@ -1049,6 +1077,29 @@ def upload_raw_confirmed():
         except Exception as e:
             print(f"[upload_raw_confirmed] {f.filename} 오류: {e}")
     return jsonify({"ok": True, "saved": saved})
+
+
+@app.route("/api/admin/set-weekly-stat", methods=["POST"])
+@login_required
+def admin_set_weekly_stat():
+    """주차별 전체접수 수동 직접 입력 (로컬 DB → Railway 동기화용)."""
+    if current_user.username != SUPER_ADMIN:
+        return jsonify({"error": "슈퍼관리자만 사용 가능합니다."}), 403
+    data = request.get_json(force=True)
+    # data = [{"week_label": "3월1주", "device": "B800", "total": 46}, ...]
+    if not isinstance(data, list):
+        data = [data]
+    updated = []
+    for item in data:
+        wl = item.get("week_label", "").strip()
+        dev = item.get("device", "").strip()
+        total = item.get("total")
+        if not wl or not dev or total is None:
+            continue
+        _db.upsert_weekly_전체(wl, dev, int(total), [])
+        updated.append({"week_label": wl, "device": dev, "total": int(total)})
+        print(f"[set-weekly-stat] {wl} {dev}: {total}건 직접 입력")
+    return jsonify({"ok": True, "updated": updated})
 
 
 @app.route("/api/admin/resync-weekly", methods=["POST"])

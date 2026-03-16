@@ -356,6 +356,36 @@ document.getElementById('importConfirmedInput').addEventListener('change', funct
     .catch(() => { status.style.color='var(--primary)'; status.textContent='업로드 실패'; });
   this.value = '';
 });
+document.getElementById('btnManualWeeklyStat').addEventListener('click', () => {
+  const wl = document.getElementById('manualWeekLabel').value.trim();
+  const dev = document.getElementById('manualDevice').value;
+  const total = parseInt(document.getElementById('manualTotal').value, 10);
+  const status = document.getElementById('manualWeeklyStatus');
+  if (!wl || isNaN(total)) {
+    status.style.color = 'var(--primary)';
+    status.textContent = '주차명과 건수를 입력하세요';
+    return;
+  }
+  status.style.color = 'var(--gray)';
+  status.textContent = '저장 중...';
+  fetch('/api/admin/set-weekly-stat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify([{ week_label: wl, device: dev, total }])
+  })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        status.style.color = 'var(--green, #22c55e)';
+        status.textContent = `저장완료: ${wl} ${dev} ${total}건`;
+      } else {
+        status.style.color = 'var(--primary)';
+        status.textContent = '오류: ' + d.error;
+      }
+    })
+    .catch(() => { status.style.color = 'var(--primary)'; status.textContent = '요청 실패'; });
+});
+
 document.getElementById('btnResyncWeekly').addEventListener('click', () => {
   const btn = document.getElementById('btnResyncWeekly');
   const status = document.getElementById('resyncWeeklyStatus');

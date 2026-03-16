@@ -191,6 +191,28 @@
         <button id="btnResyncWeekly" class="btn btn-outline btn-sm" style="min-width:140px">&#128260; 강제 재동기화</button>
         <div id="resyncWeeklyStatus" style="font-size:12px;color:var(--gray);margin-top:10px;min-height:16px"></div>
       </div>
+      <div style="margin:16px 0 8px;padding:18px;border:1.5px solid var(--border);border-radius:10px;background:var(--gray-light)">
+        <div style="font-size:13px;font-weight:700;color:var(--gray-dark);margin-bottom:4px">주차별 전체접수 수동 입력</div>
+        <div style="font-size:12px;color:var(--gray);margin-bottom:12px">pkl 파일 오류 시 주차·기종·건수를 직접 입력합니다.</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-bottom:8px">
+          <div>
+            <div style="font-size:11px;color:var(--gray);margin-bottom:3px">주차 (예: 3월1주)</div>
+            <input id="manualWeekLabel" type="text" placeholder="3월1주" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;width:90px;background:var(--white)">
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--gray);margin-bottom:3px">기종</div>
+            <select id="manualDevice" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;background:var(--white)">
+              <option>B800</option><option>B700</option><option>B710</option><option>B620</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--gray);margin-bottom:3px">건수</div>
+            <input id="manualTotal" type="number" min="0" placeholder="0" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;width:70px;background:var(--white)">
+          </div>
+          <button id="btnManualWeeklyStat" class="btn btn-outline btn-sm">저장</button>
+        </div>
+        <div id="manualWeeklyStatus" style="font-size:12px;color:var(--gray);min-height:16px"></div>
+      </div>
       <div class="modal-footer">
         <button class="btn btn-primary" id="saveSettings">경로 저장</button>
         <button class="btn btn-secondary" id="cancelSettings">닫기</button>
