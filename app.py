@@ -200,6 +200,8 @@ def signup_page():
         else:
             ok = _db.create_user(username, generate_password_hash(password), name)
             if ok:
+                if username == SUPER_ADMIN:
+                    _db.set_admin(username, True)
                 return redirect(url_for("login_page", signup_success=name))
             else:
                 error = "이미 사용 중인 아이디입니다."
