@@ -967,6 +967,26 @@ def admin_set_admin():
     return jsonify({"ok": True, "username": username, "is_admin": is_admin})
 
 
+@app.route("/api/admin/weekly-debug")
+@login_required
+def admin_weekly_debug():
+    if current_user.username != SUPER_ADMIN:
+        return jsonify({"error": "슈퍼관리자만"}), 403
+    import sqlite3 as _sq
+    conn = _sq.connect(_db.DB_PATH)
+    conn.row_factory = _sq.Row
+    rows = conn.execute(
+        "SELECT week_label, device, total FROM weekly_전체_stats ORDER BY device, week_label"
+    ).fetchall()
+    conn.close()
+    rc_dir = os.path.join(_BASE_DIR, "raw_confirmed")
+    pkl_files = os.listdir(rc_dir) if os.path.exists(rc_dir) else []
+    return jsonify({
+        "weekly_stats": [dict(r) for r in rows],
+        "raw_confirmed_files": pkl_files,
+    })
+
+
 @app.route("/api/admin/db-info")
 @login_required
 def admin_db_info():
