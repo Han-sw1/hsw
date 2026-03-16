@@ -9,6 +9,7 @@ confirmed_weeks.json
 analytics_cache.json
 cw_stats_cache.json
 rawdata_cache.json
+weekly_전체_sync_state.json
 *.db
 *.db-shm
 *.db-wal

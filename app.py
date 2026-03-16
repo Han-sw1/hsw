@@ -953,6 +953,35 @@ def admin_set_admin():
     return jsonify({"ok": True, "username": username, "is_admin": is_admin})
 
 
+@app.route("/api/admin/resync-weekly", methods=["POST"])
+@login_required
+def admin_resync_weekly():
+    """주차별 전체접수 DB 강제 재동기화 (data/ + raw_confirmed/ pkl)"""
+    if current_user.username != SUPER_ADMIN:
+        return jsonify({"error": "슈퍼관리자만 사용 가능합니다."}), 403
+    try:
+        from weekly_summary import sync_전체접수_to_db, upsert_전체접수_from_raw
+        # data/ 폴더 → DB 강제 갱신
+        sync_전체접수_to_db(force=True)
+        # raw_confirmed/ pkl → DB 갱신
+        rc_dir = os.path.join(_BASE_DIR, "raw_confirmed")
+        count = 0
+        if os.path.exists(rc_dir):
+            for fname in sorted(os.listdir(rc_dir)):
+                if not fname.endswith(".pkl"):
+                    continue
+                try:
+                    with open(os.path.join(rc_dir, fname), "rb") as f:
+                        df = pickle.load(f)
+                    upsert_전체접수_from_raw(df)
+                    count += 1
+                except Exception as _e:
+                    print(f"[resync] {fname} 오류: {_e}")
+        return jsonify({"ok": True, "pkl_count": count})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/rawdata-stats")
 def rawdata_stats():
     from rawdata import get_rawdata_stats

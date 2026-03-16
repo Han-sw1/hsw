@@ -275,6 +275,26 @@ document.getElementById('importConfirmedInput').addEventListener('change', funct
     .catch(() => { status.style.color='var(--primary)'; status.textContent='업로드 실패'; });
   this.value = '';
 });
+document.getElementById('btnResyncWeekly').addEventListener('click', () => {
+  const btn = document.getElementById('btnResyncWeekly');
+  const status = document.getElementById('resyncWeeklyStatus');
+  btn.disabled = true;
+  status.style.color = 'var(--gray)';
+  status.textContent = '동기화 중...';
+  fetch('/api/admin/resync-weekly', { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        status.style.color = 'var(--green, #22c55e)';
+        status.textContent = `완료! pkl ${d.pkl_count}개 처리됨`;
+      } else {
+        status.style.color = 'var(--primary)';
+        status.textContent = '오류: ' + d.error;
+      }
+    })
+    .catch(() => { status.style.color = 'var(--primary)'; status.textContent = '요청 실패'; })
+    .finally(() => { btn.disabled = false; });
+});
 document.getElementById('settingsModal').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeSettings();
 });
