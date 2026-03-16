@@ -145,15 +145,27 @@
         </div>
         <div id="importConfirmedStatus" style="font-size:12px;color:var(--gray);margin-top:10px;min-height:16px"></div>
       </div>
-      <!-- 회원 관리 -->
-      <div style="margin:24px 0 8px;padding:18px;border:1.5px solid var(--border);border-radius:10px;background:var(--gray-light)">
-        <div style="font-size:13px;font-weight:700;color:var(--gray-dark);margin-bottom:12px">&#128100; 회원 관리</div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" id="saveSettings">경로 저장</button>
+        <button class="btn btn-secondary" id="cancelSettings">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 회원 관리 모달 -->
+  <div class="modal-overlay" id="userMgmtModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>&#128100; 회원 관리</h2>
+        <button class="btn-close" id="closeUserMgmt">&#10005;</button>
+      </div>
+      <div class="modal-body">
         <div style="display:flex;gap:8px;align-items:center">
           <input type="text" id="userSearchInput" placeholder="아이디 검색" style="flex:1;padding:8px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;background:var(--white)">
           <button id="btnUserSearch" style="padding:8px 14px;background:var(--primary);color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">검색</button>
         </div>
         <div id="userSearchResult" style="margin-top:12px;display:none">
-          <div style="padding:12px 14px;background:var(--white);border:1.5px solid var(--border);border-radius:8px">
+          <div style="padding:12px 14px;background:var(--gray-light);border:1.5px solid var(--border);border-radius:8px">
             <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
               <div>
                 <span style="font-size:13px;font-weight:700;color:var(--gray-dark)" id="userResultName"></span>
@@ -170,8 +182,7 @@
         <div id="userSearchError" style="margin-top:8px;font-size:12px;color:#e53e3e;display:none"></div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-primary" id="saveSettings">경로 저장</button>
-        <button class="btn btn-secondary" id="cancelSettings">닫기</button>
+        <button class="btn btn-secondary" id="cancelUserMgmt">닫기</button>
       </div>
     </div>
   </div>

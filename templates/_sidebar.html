@@ -50,8 +50,17 @@
       동일차량 장애현황
     </a>
 
-    {% if is_super_admin %}
+    {% if current_user.is_admin %}
     <div class="nav-section-label">설정</div>
+    <button class="nav-item" id="btnUserMgmt">
+      <svg class="nav-icon" viewBox="0 0 20 20">
+        <circle cx="8" cy="7" r="3"/><path d="M2 17c0-3.3 2.7-6 6-6s6 2.7 6 6"/>
+        <line x1="14" y1="6" x2="18" y2="6"/><line x1="16" y1="4" x2="16" y2="8"/>
+      </svg>
+      회원 관리
+    </button>
+    {% endif %}
+    {% if is_super_admin %}
     <button class="nav-item" id="btnSettings">
       <svg class="nav-icon" viewBox="0 0 20 20">
         <circle cx="10" cy="10" r="2.8"/>

@@ -296,6 +296,25 @@ document.getElementById('saveSettings').addEventListener('click', () => {
   });
 });
 
+// ─── 회원 관리 모달 ──────────────────────────────────
+const _btnUserMgmt = document.getElementById('btnUserMgmt');
+if (_btnUserMgmt) _btnUserMgmt.addEventListener('click', () => {
+  document.getElementById('userMgmtModal').classList.add('open');
+  document.getElementById('userSearchInput').value = '';
+  document.getElementById('userSearchResult').style.display = 'none';
+  document.getElementById('userSearchError').style.display = 'none';
+});
+['closeUserMgmt', 'cancelUserMgmt'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('click', closeUserMgmt);
+});
+document.getElementById('userMgmtModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeUserMgmt();
+});
+function closeUserMgmt() {
+  document.getElementById('userMgmtModal').classList.remove('open');
+}
+
 // ─── 회원 관리 ───────────────────────────────────────
 let _foundUser = null;
 
