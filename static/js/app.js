@@ -297,6 +297,30 @@ function uploadRawdataFile(inputEl, type, statusEl) {
     });
   inputEl.value = '';
 }
+// 월간 파일 업로드
+document.getElementById('monthlyUploadInput').addEventListener('change', function() {
+  const file = this.files[0];
+  if (!file) return;
+  const status = document.getElementById('monthlyUploadStatus');
+  status.style.color = 'var(--gray)';
+  status.textContent = `"${file.name}" 업로드 중...`;
+  const fd = new FormData();
+  fd.append('file', file);
+  fetch('/api/admin/upload-monthly', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        status.style.color = '#1E7A3C';
+        status.textContent = `"${d.filename}" 업로드 완료`;
+      } else {
+        status.style.color = 'var(--primary)';
+        status.textContent = d.error || '업로드 실패';
+      }
+    })
+    .catch(() => { status.style.color = 'var(--primary)'; status.textContent = '업로드 실패'; });
+  this.value = '';
+});
+
 // raw_confirmed pkl 업로드
 document.getElementById('rawConfirmedInput').addEventListener('change', function() {
   const files = this.files;

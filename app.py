@@ -944,6 +944,25 @@ def same_vehicle_stats():
     resp.headers["Cache-Control"] = "no-store"
     return resp
 
+@app.route("/api/admin/upload-monthly", methods=["POST"])
+@login_required
+def admin_upload_monthly():
+    """월간 파일 업로드 (기존 파일 덮어쓰기 포함)."""
+    if current_user.username != SUPER_ADMIN:
+        return jsonify({"error": "슈퍼관리자만 사용 가능합니다."}), 403
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"error": "파일 없음"}), 400
+    filename = f.filename
+    if not filename.endswith("일자별장애현황.xlsx"):
+        return jsonify({"error": "파일명이 올바르지 않습니다. (예: 26년 03월 일자별장애현황.xlsx)"}), 400
+    from excel_writer import MONTHLY_FILES_DIR
+    os.makedirs(MONTHLY_FILES_DIR, exist_ok=True)
+    save_path = os.path.join(MONTHLY_FILES_DIR, filename)
+    f.save(save_path)
+    return jsonify({"ok": True, "filename": filename})
+
+
 @app.route("/api/admin/download-db")
 @login_required
 def admin_download_db():
