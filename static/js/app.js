@@ -434,6 +434,7 @@ if (_btnUserMgmt) _btnUserMgmt.addEventListener('click', () => {
   document.getElementById('userSearchInput').value = '';
   document.getElementById('userSearchResult').style.display = 'none';
   document.getElementById('userSearchError').style.display = 'none';
+  loadPendingUsers();
 });
 ['closeUserMgmt', 'cancelUserMgmt'].forEach(id => {
   const el = document.getElementById(id);
@@ -502,6 +503,57 @@ function setAdminRole(isAdmin) {
 
 document.getElementById('btnGrantAdmin').addEventListener('click', () => setAdminRole(true));
 document.getElementById('btnRevokeAdmin').addEventListener('click', () => setAdminRole(false));
+
+// ─── 가입 신청 목록 ───────────────────────────────────
+function loadPendingUsers() {
+  const container = document.getElementById('pendingList');
+  const badge = document.getElementById('pendingCountBadge');
+  container.innerHTML = '<div style="font-size:12px;color:var(--gray);text-align:center;padding:10px 0">불러오는 중...</div>';
+  fetch('/api/admin/pending-users')
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) { container.innerHTML = `<div style="font-size:12px;color:#e53e3e">${d.error}</div>`; return; }
+      const users = d.users || [];
+      if (users.length === 0) {
+        badge.style.display = 'none';
+        container.innerHTML = '<div style="font-size:12px;color:var(--gray);text-align:center;padding:10px 0">대기중인 가입 신청이 없습니다.</div>';
+        return;
+      }
+      badge.textContent = users.length;
+      badge.style.display = 'inline-block';
+      container.innerHTML = users.map(u => `
+        <div data-username="${u.username}" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:10px 12px;background:var(--gray-light);border:1.5px solid var(--border);border-radius:8px;margin-bottom:6px">
+          <div>
+            <span style="font-size:13px;font-weight:700;color:var(--gray-dark)">${u.name || u.username}</span>
+            <span style="font-size:12px;color:var(--gray);margin-left:6px">(${u.username})</span>
+            <div style="font-size:11px;color:var(--gray);margin-top:2px">${u.created_at ? u.created_at.slice(0, 16) : ''} 신청</div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button onclick="handlePendingUser('${u.username}', 'approve')" style="padding:5px 12px;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;background:#1E7A3C;color:#fff">승인</button>
+            <button onclick="handlePendingUser('${u.username}', 'reject')" style="padding:5px 12px;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;background:#e5e7eb;color:#c0392b">거절</button>
+          </div>
+        </div>
+      `).join('');
+    })
+    .catch(() => { container.innerHTML = '<div style="font-size:12px;color:#e53e3e">불러오기 오류</div>'; });
+}
+
+function handlePendingUser(username, action) {
+  const url = action === 'approve' ? '/api/admin/approve-user' : '/api/admin/reject-user';
+  const label = action === 'approve' ? '승인' : '거절';
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username }),
+  })
+    .then(r => r.json())
+    .then(d => {
+      if (!d.ok) { showToast(d.error, 'error'); return; }
+      showToast(`'${username}' 계정을 ${label}했습니다.`, 'success');
+      loadPendingUsers();
+    })
+    .catch(() => showToast(`${label} 처리 오류`, 'error'));
+}
 
 // ─── 파일 선택 ───────────────────────────────────────
 const fileInput = document.getElementById('fileInput');

@@ -47,6 +47,7 @@ CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 REFERENCE_DIR = os.path.join(os.path.dirname(__file__), "reference_files")
 
 SUPER_ADMIN = "sw_han"
+APPROVER_USERS = ["sw_han", "ysukim"]  # 가입 승인 권한 보유 계정
 
 DEFAULT_CONFIG = {
     "criteria_path": "",
@@ -160,17 +161,25 @@ def login_page():
     if current_user.is_authenticated:
         return redirect(url_for("index"))
     error = None
-    success = request.args.get("signup_success")
-    signup_msg = f"'{success}' 님, 회원가입이 완료되었습니다. 로그인해주세요." if success else None
+    signup_success = request.args.get("signup_success")
+    signup_msg = f"'{signup_success}' 님, 회원가입이 완료되었습니다. 로그인해주세요." if signup_success else None
+    pending_msg = request.args.get("signup_pending")
+    pending_msg = f"'{pending_msg}' 님, 가입 신청이 완료되었습니다. 관리자 승인 후 이용 가능합니다." if pending_msg else None
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
         row = _db.get_user_by_username(username)
         if row and check_password_hash(row["password_hash"], password):
-            login_user(User(row), remember=False)
-            return redirect(request.args.get("next") or url_for("index"))
-        error = "아이디 또는 비밀번호가 올바르지 않습니다."
-    return render_template("login.html", error=error, signup_msg=signup_msg)
+            if row["status"] == "pending":
+                error = "아직 승인 대기중입니다. 관리자의 승인 후 이용 가능합니다."
+            elif row["status"] == "rejected":
+                error = "가입이 거절되었습니다. 관리자에게 문의해주세요."
+            else:
+                login_user(User(row), remember=False)
+                return redirect(request.args.get("next") or url_for("index"))
+        else:
+            error = "아이디 또는 비밀번호가 올바르지 않습니다."
+    return render_template("login.html", error=error, signup_msg=signup_msg, pending_msg=pending_msg)
 
 
 @app.route("/logout")
@@ -212,11 +221,14 @@ def signup_page():
         elif password != password2:
             error = "비밀번호가 일치하지 않습니다."
         else:
-            ok = _db.create_user(username, generate_password_hash(password), name)
+            is_approver = username in APPROVER_USERS
+            status = "approved" if is_approver else "pending"
+            ok = _db.create_user(username, generate_password_hash(password), name, status=status)
             if ok:
-                if username == SUPER_ADMIN:
+                if is_approver:
                     _db.set_admin(username, True)
-                return redirect(url_for("login_page", signup_success=name))
+                    return redirect(url_for("login_page", signup_success=name))
+                return redirect(url_for("login_page", signup_pending=name))
             else:
                 error = "이미 사용 중인 아이디입니다."
     return render_template("signup.html", error=error, success=success)
@@ -931,6 +943,45 @@ def same_vehicle_stats():
     resp = make_response(jsonify(result))
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+@app.route("/api/admin/pending-users")
+@login_required
+def admin_pending_users():
+    if not current_user.is_admin:
+        return jsonify({"error": "관리자만 사용 가능합니다."}), 403
+    users = _db.get_pending_users()
+    return jsonify({"users": users})
+
+
+@app.route("/api/admin/approve-user", methods=["POST"])
+@login_required
+def admin_approve_user():
+    if not current_user.is_admin:
+        return jsonify({"error": "관리자만 사용 가능합니다."}), 403
+    username = (request.json or {}).get("username", "").strip()
+    if not username:
+        return jsonify({"error": "아이디 누락"}), 400
+    user = _db.get_user_by_username(username)
+    if not user:
+        return jsonify({"error": f"'{username}' 아이디를 찾을 수 없습니다."}), 404
+    _db.update_user_status(username, "approved")
+    return jsonify({"ok": True, "username": username})
+
+
+@app.route("/api/admin/reject-user", methods=["POST"])
+@login_required
+def admin_reject_user():
+    if not current_user.is_admin:
+        return jsonify({"error": "관리자만 사용 가능합니다."}), 403
+    username = (request.json or {}).get("username", "").strip()
+    if not username:
+        return jsonify({"error": "아이디 누락"}), 400
+    user = _db.get_user_by_username(username)
+    if not user:
+        return jsonify({"error": f"'{username}' 아이디를 찾을 수 없습니다."}), 404
+    _db.update_user_status(username, "rejected")
+    return jsonify({"ok": True, "username": username})
+
 
 @app.route("/api/admin/search-user")
 @login_required

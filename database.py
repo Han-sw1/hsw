@@ -23,6 +23,13 @@ def _connect():
 
 def init_db():
     """테이블 생성 (없으면 생성)."""
+    # Migration: users 테이블에 status 컬럼 추가
+    with _connect() as conn:
+        user_cols = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+        if user_cols and 'status' not in user_cols:
+            conn.execute("ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'approved'")
+            conn.commit()
+
     # Migration: same_vehicle_raw 스키마 변경 시 기존 테이블 재생성
     with _connect() as conn:
         cols_rows = conn.execute("PRAGMA table_info(same_vehicle_raw)").fetchall()
@@ -72,6 +79,7 @@ def init_db():
                 password_hash TEXT NOT NULL,
                 name          TEXT NOT NULL DEFAULT '',
                 is_admin      INTEGER NOT NULL DEFAULT 0,
+                status        TEXT NOT NULL DEFAULT 'approved',
                 created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -267,18 +275,38 @@ def is_db_empty():
 
 # ── users ─────────────────────────────────────────────────────────────────────
 
-def create_user(username, password_hash, name=""):
+def create_user(username, password_hash, name="", status="pending"):
     with _lock:
         with _connect() as conn:
             try:
                 conn.execute(
-                    "INSERT INTO users (username, password_hash, name) VALUES (?, ?, ?)",
-                    (username, password_hash, name),
+                    "INSERT INTO users (username, password_hash, name, status) VALUES (?, ?, ?, ?)",
+                    (username, password_hash, name, status),
                 )
                 conn.commit()
                 return True
             except sqlite3.IntegrityError:
                 return False  # 중복 username
+
+
+def update_user_status(username, status):
+    """status: 'pending' | 'approved' | 'rejected'"""
+    with _lock:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE users SET status=? WHERE username=?",
+                (status, username),
+            )
+            conn.commit()
+
+
+def get_pending_users():
+    """가입 승인 대기 중인 사용자 목록 반환."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, username, name, created_at FROM users WHERE status='pending' ORDER BY created_at ASC"
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def set_admin(username, is_admin=True):

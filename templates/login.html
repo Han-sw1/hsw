@@ -188,6 +188,11 @@
       border-color: #a8d5b5;
       color: #1E7A3C;
     }
+    .alert.pending {
+      background: #FFF8E1;
+      border-color: #FFD54F;
+      color: #7B5800;
+    }
   </style>
 </head>
 <body>
@@ -202,6 +207,9 @@
 
       {% if signup_msg %}
       <div class="alert success">{{ signup_msg }}</div>
+      {% endif %}
+      {% if pending_msg %}
+      <div class="alert pending">{{ pending_msg }}</div>
       {% endif %}
       {% if error %}
       <div class="alert">{{ error }}</div>
