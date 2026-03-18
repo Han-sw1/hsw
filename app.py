@@ -944,6 +944,16 @@ def same_vehicle_stats():
     resp.headers["Cache-Control"] = "no-store"
     return resp
 
+@app.route("/api/admin/download-db")
+@login_required
+def admin_download_db():
+    if current_user.username != SUPER_ADMIN:
+        return jsonify({"error": "슈퍼관리자만 사용 가능합니다."}), 403
+    if not os.path.exists(_db.DB_PATH):
+        return jsonify({"error": "DB 파일이 없습니다."}), 404
+    return send_file(_db.DB_PATH, as_attachment=True, download_name="atmo.db")
+
+
 @app.route("/api/admin/pending-users")
 @login_required
 def admin_pending_users():
