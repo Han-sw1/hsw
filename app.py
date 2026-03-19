@@ -963,6 +963,18 @@ def admin_upload_monthly():
     return jsonify({"ok": True, "filename": filename})
 
 
+@app.route("/api/admin/users-list")
+@login_required
+def admin_users_list():
+    if current_user.username != SUPER_ADMIN:
+        return jsonify({"error": "슈퍼관리자만 사용 가능합니다."}), 403
+    with _db._connect() as conn:
+        rows = conn.execute(
+            "SELECT username, name, is_admin, status, created_at FROM users ORDER BY created_at"
+        ).fetchall()
+    return jsonify({"users": [dict(r) for r in rows]})
+
+
 @app.route("/api/admin/download-db")
 @login_required
 def admin_download_db():
