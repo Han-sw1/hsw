@@ -252,6 +252,18 @@ def _replace_sheetdata(sheet_xml_bytes, new_sheetdata_xml, new_cols_xml='', tota
     return result.encode('utf-8')
 
 
+def _set_full_calc_on_load(workbook_xml_bytes):
+    """workbook.xml의 calcPr에 fullCalcOnLoad="1" 설정 — 열릴 때 수식 강제 재계산."""
+    xml = workbook_xml_bytes.decode('utf-8')
+    if 'fullCalcOnLoad=' in xml:
+        xml = re.sub(r'fullCalcOnLoad="[^"]*"', 'fullCalcOnLoad="1"', xml)
+    elif '<calcPr' in xml:
+        xml = re.sub(r'(<calcPr\b)', r'\1 fullCalcOnLoad="1"', xml, count=1)
+    else:
+        xml = xml.replace('</workbook>', '<calcPr fullCalcOnLoad="1"/></workbook>')
+    return xml.encode('utf-8')
+
+
 def _update_xlsx_sheets(file_path, updates):
     """
     xlsx에서 특정 시트의 sheetData만 교체 — 나머지 모든 서식/수식 완전 보존
@@ -289,6 +301,9 @@ def _update_xlsx_sheets(file_path, updates):
                     total_cols = len(headers)
                     data = _replace_sheetdata(data, new_sd, new_cols, total_rows, total_cols)
                     matched.add(item.filename)
+                elif item.filename == 'xl/workbook.xml':
+                    # 파일 열릴 때 수식 강제 재계산 설정
+                    data = _set_full_calc_on_load(data)
                 zf_out.writestr(item, data)
         if not matched:
             raise RuntimeError(f"zip 내 파일 경로 불일치. paths_to_update={list(paths_to_update.keys())}")
