@@ -57,6 +57,7 @@ DEFAULT_CONFIG = {
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB
 app.secret_key = os.environ.get("SECRET_KEY", "atmo-secret-key-change-in-prod-2024")
+app.config["PERMANENT_SESSION_LIFETIME"] = __import__("datetime").timedelta(minutes=30)
 
 # ── Flask-Login 설정 ──────────────────────────────────────────────────────────
 login_manager = LoginManager(app)
@@ -175,6 +176,7 @@ def login_page():
             elif row["status"] == "rejected":
                 error = "가입이 거절되었습니다. 관리자에게 문의해주세요."
             else:
+                session.permanent = True
                 login_user(User(row), remember=False)
                 return redirect(request.args.get("next") or url_for("index"))
         else:
