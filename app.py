@@ -584,7 +584,7 @@ def get_confirmed_weeks():
 
 
 # ─── 마지막 업데이트 기록 ─────────────────────────────────
-_LAST_UPDATE_PATH = os.path.join(os.path.dirname(__file__), "last_update.json")
+_LAST_UPDATE_PATH = os.path.join(_BASE_DIR, "last_update.json")
 
 def _save_last_update(action, detail=""):
     try:
