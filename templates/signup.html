@@ -39,7 +39,10 @@
       gap: 12px;
       margin-bottom: 28px;
     }
-    .logo-img { height: 48px; width: auto; max-width: 100%; }
+    .logo-img { height: 48px; width: auto; }
+    @media (max-width: 480px) {
+      .logo-img { height: 36px; max-width: 80%; }
+    }
     .logo-title {
       font-size: 17px;
       font-weight: 800;
