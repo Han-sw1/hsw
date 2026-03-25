@@ -921,11 +921,19 @@ async function loadQuickStats() {
     if (latestFile) {
       const fn = latestFile.name;
       const confirmed = cw[fn] || [];
-      // 주차 목록: 이미 확정된 것 + 예상 주차 (1~5주)
+      // 주차 목록: 이미 확정된 것 + 예상 주차 (수요일 기준 실제 주차 수)
       const monthMatch = fn.match(/(\d{1,2})월/);
       const mn = monthMatch ? parseInt(monthMatch[1]) : null;
       if (mn && confirmed.length > 0) {
-        const maxWeek = 5;
+        // 파일명에서 연도 추출 (예: "26년" → 2026), 없으면 현재 연도
+        const yearMatch = fn.match(/(\d{2,4})년/);
+        const yr = yearMatch ? (parseInt(yearMatch[1]) < 100 ? 2000 + parseInt(yearMatch[1]) : parseInt(yearMatch[1])) : new Date().getFullYear();
+        // 해당 월에 수요일이 몇 번 있는지 = 실제 주차 수
+        const daysInMonth = new Date(yr, mn, 0).getDate();
+        let maxWeek = 0;
+        for (let day = 1; day <= daysInMonth; day++) {
+          if (new Date(yr, mn - 1, day).getDay() === 3) maxWeek++;
+        }
         const badges = Array.from({length: maxWeek}, (_, i) => {
           const label = `${mn}월${i+1}주`;
           const done = confirmed.includes(label);
