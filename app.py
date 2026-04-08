@@ -59,6 +59,11 @@ app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB
 app.secret_key = os.environ.get("SECRET_KEY", "atmo-secret-key-change-in-prod-2024")
 app.config["PERMANENT_SESSION_LIFETIME"] = __import__("datetime").timedelta(minutes=30)
 
+# Railway → Vercel 리다이렉트
+@app.before_request
+def redirect_to_vercel():
+    return redirect("https://hatmob.vercel.app" + request.full_path.rstrip("?"), 301)
+
 # ── Flask-Login 설정 ──────────────────────────────────────────────────────────
 login_manager = LoginManager(app)
 login_manager.login_view = "login_page"
